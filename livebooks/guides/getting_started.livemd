@@ -193,10 +193,10 @@ Graph.node_count(road_graph)
 
 ### Rendering to GeoJSON
 
-```elixir
+````elixir
 json = Meridian.Render.GeoJSON.to_string(graph, include_edges: true)
-Kino.Text.new(json, language: "json")
-```
+Kino.Markdown.new("```json\n#{json}\n```")
+````
 
 ## Spatial Pathfinding
 
@@ -244,12 +244,10 @@ c = Graph.new(crs: "EPSG:3857")
 If you have `kino_vizjs` installed, you can render the graph topology as a DOT diagram:
 
 ```elixir
-dot =
-  graph
-  |> Meridian.Graph.to_yog()
-  |> Yog.Render.DOT.to_dot()
-
-KinoVizjs.new(dot)
+graph
+|> Meridian.Graph.to_yog()
+|> Yog.Render.DOT.to_dot()
+|> Kino.VizJS.render(engine: "neato")
 ```
 
 ## Summary
