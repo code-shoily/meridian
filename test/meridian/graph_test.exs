@@ -55,9 +55,9 @@ defmodule Meridian.GraphTest do
     test "stores spatial data" do
       g =
         Graph.new()
-        |> Graph.add_node(:nyc, %{geometry: %Geo.Point{coordinates: {-74.0, 40.7}}})
+        |> Graph.add_node(:toronto, %{geometry: %Geo.Point{coordinates: {-79.3832, 43.6532}}})
 
-      assert Graph.node(g, :nyc).geometry.coordinates == {-74.0, 40.7}
+      assert Graph.node(g, :toronto).geometry.coordinates == {-79.3832, 43.6532}
     end
 
     test "batch insert from keyword list" do

@@ -21,7 +21,7 @@ defmodule Meridian.IO.GeoJSONTest do
 
     test "ingests single Feature" do
       json = ~s"""
-      {"type":"Feature","geometry":{"type":"Point","coordinates":[-74.0,40.7]},"properties":{"city":"NYC"}}
+      {"type":"Feature","geometry":{"type":"Point","coordinates":[-79.38,43.65]},"properties":{"city":"Toronto"}}
       """
 
       assert {:ok, graph} = GeoJSON.from_string(json)

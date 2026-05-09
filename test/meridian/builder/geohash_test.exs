@@ -44,12 +44,12 @@ defmodule Meridian.Builder.GeohashTest do
 
   describe "encode/decode via geohash library" do
     test "roundtrip" do
-      hash = Geohash.encode(40.7484, -73.9857, 6)
+      hash = Geohash.encode(43.6426, -79.3871, 6)
       assert String.length(hash) == 6
 
       {lat, lon} = Geohash.decode(hash)
-      assert_in_delta lat, 40.7484, 0.5
-      assert_in_delta lon, -73.9857, 0.5
+      assert_in_delta lat, 43.6426, 0.5
+      assert_in_delta lon, -79.3871, 0.5
     end
   end
 end

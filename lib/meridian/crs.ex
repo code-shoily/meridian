@@ -21,8 +21,8 @@ defmodule Meridian.CRS do
 
       iex> g = Meridian.Graph.new()
       iex> g = g
-      ...>   |> Meridian.Graph.add_node(:a, %{geometry: %Geo.Point{coordinates: {-73.9857, 40.7484}}})
-      ...>   |> Meridian.Graph.add_node(:b, %{geometry: %Geo.Point{coordinates: {-73.9851, 40.7489}}})
+      ...>   |> Meridian.Graph.add_node(:a, %{geometry: %Geo.Point{coordinates: {-79.3871, 43.6426}}})
+      ...>   |> Meridian.Graph.add_node(:b, %{geometry: %Geo.Point{coordinates: {-79.3865, 43.6431}}})
       iex> dist = Meridian.CRS.distance(g, :a, :b)
       iex> is_float(dist) and dist > 0
       true

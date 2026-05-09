@@ -40,17 +40,17 @@ Nodes are identified by an ID and carry a data map. The `:geometry` key is speci
 ```elixir
 graph =
   Graph.new()
-  |> Graph.add_node(:nyc, %{
-    geometry: %Geo.Point{coordinates: {-74.006, 40.7128}},
-    name: "New York City"
+  |> Graph.add_node(:toronto, %{
+    geometry: %Geo.Point{coordinates: {-79.3832, 43.6532}},
+    name: "Toronto"
   })
-  |> Graph.add_node(:la, %{
-    geometry: %Geo.Point{coordinates: {-118.2437, 34.0522}},
-    name: "Los Angeles"
+  |> Graph.add_node(:vancouver, %{
+    geometry: %Geo.Point{coordinates: {-123.1207, 49.2827}},
+    name: "Vancouver"
   })
-  |> Graph.add_node(:chi, %{
-    geometry: %Geo.Point{coordinates: {-87.6298, 41.8781}},
-    name: "Chicago"
+  |> Graph.add_node(:montreal, %{
+    geometry: %Geo.Point{coordinates: {-73.5673, 45.5017}},
+    name: "Montreal"
   })
 
 Graph.node_count(graph)
@@ -69,9 +69,9 @@ Edges connect nodes. For spatial graphs, the edge weight often represents distan
 ```elixir
 {:ok, graph} =
   graph
-  |> Graph.add_edge(:nyc, :chi, %{distance_km: 1_145})
-  |> then(fn {:ok, g} -> Graph.add_edge(g, :chi, :la, %{distance_km: 2_015}) end)
-  |> then(fn {:ok, g} -> Graph.add_edge(g, :nyc, :la, %{distance_km: 3_944}) end)
+  |> Graph.add_edge(:toronto, :montreal, %{distance_km: 542})
+  |> then(fn {:ok, g} -> Graph.add_edge(g, :montreal, :vancouver, %{distance_km: 4_582}) end)
+  |> then(fn {:ok, g} -> Graph.add_edge(g, :toronto, :vancouver, %{distance_km: 4_373}) end)
 
 Graph.edge_count(graph)
 ```
@@ -79,7 +79,7 @@ Graph.edge_count(graph)
 Use `add_edge_ensure/5` when you want to auto-create missing endpoint nodes:
 
 ```elixir
-graph = Graph.add_edge_ensure(graph, :nyc, :bos, %{distance_km: 350}, %{name: "Boston"})
+graph = Graph.add_edge_ensure(graph, :toronto, :ottawa, %{distance_km: 450}, %{name: "Ottawa"})
 Graph.node_count(graph)
 ```
 
@@ -98,7 +98,7 @@ Meridian keeps track of the graph's CRS so you never silently confuse coordinate
 `Meridian.CRS.distance/3` computes the **great-circle distance** in meters between two nodes that have `%Geo.Point{}` geometries.
 
 ```elixir
-Meridian.CRS.distance(graph, :nyc, :chi)
+Meridian.CRS.distance(graph, :toronto, :montreal)
 ```
 
 Nodes without point geometries return `nil`:
@@ -170,8 +170,8 @@ Requires the optional `:geohash` dependency.
 geohash_graph =
   Graph.new(kind: :undirected)
   |> Meridian.Builder.Geohash.grid(
-    sw: {37.7, -122.5},
-    ne: {37.8, -122.4},
+    sw: {43.6, -79.4},
+    ne: {43.7, -79.3},
     precision: 5,
     topology: :rook
   )
@@ -206,21 +206,21 @@ Kino.Markdown.new("```json\n#{json}\n```")
 ```elixir
 map_graph =
   Graph.new()
-  |> Graph.add_node(:nyc, %{
-    geometry: %Geo.Point{coordinates: {-74.006, 40.7128}},
-    name: "New York City"
+  |> Graph.add_node(:toronto, %{
+    geometry: %Geo.Point{coordinates: {-79.3832, 43.6532}},
+    name: "Toronto"
   })
-  |> Graph.add_node(:bos, %{
-    geometry: %Geo.Point{coordinates: {-71.0589, 42.3601}},
-    name: "Boston"
+  |> Graph.add_node(:ottawa, %{
+    geometry: %Geo.Point{coordinates: {-75.6972, 45.4215}},
+    name: "Ottawa"
   })
-  |> Graph.add_node(:dc, %{
-    geometry: %Geo.Point{coordinates: {-77.0369, 38.9072}},
-    name: "Washington D.C."
+  |> Graph.add_node(:montreal, %{
+    geometry: %Geo.Point{coordinates: {-73.5673, 45.5017}},
+    name: "Montreal"
   })
-  #|> Graph.add_edge_ensure(:nyc, :bos, %{distance_km: 350})
-  |> Graph.add_edge_ensure(:bos, :dc, %{distance_km: 700})
-  |> Graph.add_edge_ensure(:dc, :nyc, %{distance_km: 360})
+  #|> Graph.add_edge_ensure(:toronto, :ottawa, %{distance_km: 450})
+  |> Graph.add_edge_ensure(:ottawa, :montreal, %{distance_km: 200})
+  |> Graph.add_edge_ensure(:montreal, :toronto, %{distance_km: 540})
 
 Meridian.Render.MapLibre.new(map_graph)
 ```
