@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Meridian.Pathfinding.widest_path/2` — maximum bottleneck capacity path wrapper.
 - `:weight_fn` now receives edge `data` as a fourth argument (`graph, from, to, data`). Return `nil` or `:infinity` to dynamically exclude edges.
 - `:node_filter` option on all pathfinding functions to exclude nodes and all incident edges.
+- `Meridian.Spatial` — proximity queries (`within/3`, `nearest/3`) with `:metric` (`:haversine` / `:euclidean`) and `:filter` options.
 
 ## [0.1.0] - 2026-05-09
 
