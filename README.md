@@ -1,5 +1,11 @@
 # Meridian
 
+[![Hex Version](https://img.shields.io/hexpm/v/meridian.svg)](https://hex.pm/packages/meridian)
+[![Hex Docs](https://img.shields.io/badge/hex-docs-ffaff3)](https://hexdocs.pm/meridian/)
+[![CI](https://github.com/code-shoily/meridian/actions/workflows/ci.yml/badge.svg)](https://github.com/code-shoily/meridian/actions)
+[![Coverage Status](https://coveralls.io/repos/github/code-shoily/meridian/badge.svg?branch=main)](https://coveralls.io/github/code-shoily/meridian?branch=main)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 > Projection-aware spatial graphs for Elixir.
 
 Meridian sits on top of [`yog_ex`](https://hex.pm/packages/yog_ex) and brings
