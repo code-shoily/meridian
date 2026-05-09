@@ -79,7 +79,8 @@ defmodule Meridian.MixProject do
       main: "readme",
       extras: [
         "README.md",
-        {"livebooks/guides/getting_started.livemd", [filename: "getting_started", title: "Getting Started"]}
+        {"livebooks/guides/getting_started.livemd",
+         [filename: "getting_started", title: "Getting Started"]}
       ],
       source_ref: "v#{@version}",
       source_url: @source_url,

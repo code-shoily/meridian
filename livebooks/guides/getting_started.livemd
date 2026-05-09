@@ -4,8 +4,9 @@
 Mix.install([
   {:meridian, path: "/home/mafinar/repos/elixir/meridian"},
   {:kino, "~> 0.14"},
-  {:h3, "~> 3.0"},
-  {:kino_vizjs, "~> 0.8"}
+  {:kino_vizjs, "~> 0.8"},
+  {:jason, "~> 1.4"},
+  {:geohash, "~> 1.3"}
 ])
 ```
 
@@ -160,29 +161,6 @@ Geometry.centroid(poly)
 
 ## Building Grid Graphs
 
-### H3 Hexagonal Grid
-
-Requires the optional `:h3` dependency.
-
-```elixir
-h3_graph =
-  Graph.new(kind: :undirected)
-  |> Meridian.Builder.H3.grid(
-    center: {37.7749, -122.4194},
-    resolution: 5,
-    k_ring: 1
-  )
-
-Graph.node_count(h3_graph)
-```
-
-Each node carries its H3 index and cell-center geometry:
-
-```elixir
-[{id, data} | _] = Graph.nodes(h3_graph) |> Enum.to_list()
-{id, data.h3_index, data.h3_resolution, data.geometry}
-```
-
 ### Geohash Rectangular Grid
 
 Requires the optional `:geohash` dependency.
@@ -282,7 +260,6 @@ KinoVizjs.new(dot)
 | Add node     | `Meridian.Graph`           | `Graph.add_node/3`           |
 | Distance     | `Meridian.CRS`             | `CRS.distance/3`             |
 | Edge weights | `Meridian.CRS`             | `CRS.compute_edge_weights/2` |
-| H3 grid      | `Meridian.Builder.H3`      | `H3.grid/2`                  |
 | Geohash grid | `Meridian.Builder.Geohash` | `Geohash.grid/2`             |
 | GeoJSON in   | `Meridian.IO.GeoJSON`      | `GeoJSON.from_string/2`      |
 | GeoJSON out  | `Meridian.Render.GeoJSON`  | `GeoJSON.to_string/2`        |
