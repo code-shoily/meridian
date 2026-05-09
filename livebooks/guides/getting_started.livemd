@@ -5,6 +5,7 @@ Mix.install([
   {:meridian, path: "/home/mafinar/repos/elixir/meridian"},
   {:kino, "~> 0.14"},
   {:kino_vizjs, "~> 0.8"},
+  {:kino_maplibre, "~> 0.1"},
   {:jason, "~> 1.4"},
   {:geohash, "~> 1.3"}
 ])
@@ -198,6 +199,51 @@ json = Meridian.Render.GeoJSON.to_string(graph, include_edges: true)
 Kino.Markdown.new("```json\n#{json}\n```")
 ````
 
+## Map Visualization
+
+`Meridian.Render.MapLibre` renders a graph as an interactive [MapLibre](https://maplibre.org/) map inside Livebook — vector tiles, smooth zooming, and full style control.
+
+```elixir
+map_graph =
+  Graph.new()
+  |> Graph.add_node(:nyc, %{
+    geometry: %Geo.Point{coordinates: {-74.006, 40.7128}},
+    name: "New York City"
+  })
+  |> Graph.add_node(:bos, %{
+    geometry: %Geo.Point{coordinates: {-71.0589, 42.3601}},
+    name: "Boston"
+  })
+  |> Graph.add_node(:dc, %{
+    geometry: %Geo.Point{coordinates: {-77.0369, 38.9072}},
+    name: "Washington D.C."
+  })
+  #|> Graph.add_edge_ensure(:nyc, :bos, %{distance_km: 350})
+  |> Graph.add_edge_ensure(:bos, :dc, %{distance_km: 700})
+  |> Graph.add_edge_ensure(:dc, :nyc, %{distance_km: 360})
+
+Meridian.Render.MapLibre.new(map_graph)
+```
+
+With custom styling:
+
+```elixir
+Meridian.Render.MapLibre.new(map_graph,
+  style: :default,
+  zoom: 6,
+  node_color: "#e74c3c",
+  edge_color: "#3498db",
+  node_radius: 10,
+  edge_width: 3
+)
+```
+
+The map auto-centers on the graph's node centroid. Nodes render as circles and edges as lines.
+
+> **Note on styles:** `:default` uses MapLibre's free demo tiles and works out of the box. `:street` and `:terrain` require your own [MapTiler](https://www.maptiler.com/) API key — pass it as `style: :street, key: "your-key"`. Without a key these styles will raise an error.
+
+You can also use MapLibre's event API to add markers, controls, or fly-to animations dynamically.
+
 ## Spatial Pathfinding
 
 Meridian wraps `yog_ex` pathfinding with geographic heuristics.
@@ -261,13 +307,14 @@ graph
 | Geohash grid | `Meridian.Builder.Geohash` | `Geohash.grid/2`             |
 | GeoJSON in   | `Meridian.IO.GeoJSON`      | `GeoJSON.from_string/2`      |
 | GeoJSON out  | `Meridian.Render.GeoJSON`  | `GeoJSON.to_string/2`        |
+| Map render   | `Meridian.Render.MapLibre` | `MapLibre.new/2`             |
 | Pathfinding  | `Meridian.Pathfinding`     | `Pathfinding.a_star/2`       |
 
 ## What's Next?
 
 * **OSM ingestion** — scrape real street networks from OpenStreetMap
 * **Spatial queries** — `within`, `nearest`, `network_buffer`
-* **Map rendering** — interactive Leaflet maps inside Livebook
+* **Map rendering** — interactive Leaflet maps inside Livebook ✓
 * **Real reprojection** — transform coordinates between CRS using PROJ
 
 See [`ROADMAP.md`](https://github.com/code-shoily/meridian/blob/main/ROADMAP.md) for the full plan.

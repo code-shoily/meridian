@@ -55,6 +55,10 @@ defmodule Meridian.MixProject do
       # Optional: HTTP client for OSM / tile APIs
       {:req, "~> 0.5", optional: true},
 
+      # Optional: MapLibre map rendering in Livebook
+      {:maplibre, "~> 0.1", optional: true},
+      {:kino_maplibre, "~> 0.1", optional: true},
+
       # Dev & Test
       {:ex_doc, "~> 0.40", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
