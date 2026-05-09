@@ -13,6 +13,7 @@ defmodule Meridian.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       deps: deps(),
       dialyzer: [plt_add_apps: [:mix], flags: [:no_opaque]],
+      test_coverage: [tool: ExCoveralls],
 
       # Hex
       description: "Projection-aware spatial graphs on top of Yog",
@@ -77,7 +78,8 @@ defmodule Meridian.MixProject do
     [
       main: "readme",
       extras: [
-        "README.md"
+        "README.md",
+        {"livebooks/guides/getting_started.livemd", [filename: "getting_started", title: "Getting Started"]}
       ],
       source_ref: "v#{@version}",
       source_url: @source_url,

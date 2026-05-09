@@ -1,0 +1,298 @@
+# Getting Started with Meridian
+
+```elixir
+Mix.install([
+  {:meridian, path: "/home/mafinar/repos/elixir/meridian"},
+  {:kino, "~> 0.14"},
+  {:h3, "~> 3.0"},
+  {:kino_vizjs, "~> 0.8"}
+])
+```
+
+## What is Meridian?
+
+Meridian brings **spatial awareness** to [`yog_ex`](https://hex.pm/packages/yog_ex) graphs. Every graph carries its coordinate reference system (CRS), nodes can have geometries, and algorithms understand geography.
+
+This Livebook walks through the core API. By the end you'll be able to build, analyze, and visualize spatial graphs in Elixir.
+
+## Creating a Spatial Graph
+
+A `Meridian.Graph` is just a `Yog.Graph` with extra spatial metadata:
+
+```elixir
+alias Meridian.Graph
+
+graph = Graph.new()
+```
+
+By default graphs are **directed** and use **WGS-84** (`EPSG:4326`). You can override either:
+
+```elixir
+undirected = Graph.new(kind: :undirected, crs: "EPSG:3857")
+```
+
+## Adding Nodes with Geometry
+
+Nodes are identified by an ID and carry a data map. The `:geometry` key is special—Meridian uses it for spatial calculations.
+
+```elixir
+graph =
+  Graph.new()
+  |> Graph.add_node(:nyc, %{
+    geometry: %Geo.Point{coordinates: {-74.006, 40.7128}},
+    name: "New York City"
+  })
+  |> Graph.add_node(:la, %{
+    geometry: %Geo.Point{coordinates: {-118.2437, 34.0522}},
+    name: "Los Angeles"
+  })
+  |> Graph.add_node(:chi, %{
+    geometry: %Geo.Point{coordinates: {-87.6298, 41.8781}},
+    name: "Chicago"
+  })
+
+Graph.node_count(graph)
+```
+
+Nodes are `Enumerable`—iterate over them as `{id, data}` tuples:
+
+```elixir
+Enum.to_list(graph)
+```
+
+## Adding Edges
+
+Edges connect nodes. For spatial graphs, the edge weight often represents distance, travel time, or cost.
+
+```elixir
+{:ok, graph} =
+  graph
+  |> Graph.add_edge(:nyc, :chi, %{distance_km: 1_145})
+  |> then(fn {:ok, g} -> Graph.add_edge(g, :chi, :la, %{distance_km: 2_015}) end)
+  |> then(fn {:ok, g} -> Graph.add_edge(g, :nyc, :la, %{distance_km: 3_944}) end)
+
+Graph.edge_count(graph)
+```
+
+Use `add_edge_ensure/5` when you want to auto-create missing endpoint nodes:
+
+```elixir
+graph = Graph.add_edge_ensure(graph, :nyc, :bos, %{distance_km: 350}, %{name: "Boston"})
+Graph.node_count(graph)
+```
+
+## Inspecting the Graph
+
+```elixir
+inspect(graph)
+```
+
+## Coordinate Reference Systems (CRS)
+
+Meridian keeps track of the graph's CRS so you never silently confuse coordinate systems.
+
+### Distance between nodes
+
+`Meridian.CRS.distance/3` computes the **great-circle distance** in meters between two nodes that have `%Geo.Point{}` geometries.
+
+```elixir
+Meridian.CRS.distance(graph, :nyc, :chi)
+```
+
+Nodes without point geometries return `nil`:
+
+```elixir
+plain_graph = Graph.new() |> Graph.add_node(:a, %{foo: 1})
+Meridian.CRS.distance(plain_graph, :a, :b)
+```
+
+### Computing edge weights from geometry
+
+You can automatically replace all edge weights with their geographic distances:
+
+```elixir
+weighted_graph =
+  Graph.new()
+  |> Graph.add_node(:a, %{geometry: %Geo.Point{coordinates: {0.0, 0.0}}})
+  |> Graph.add_node(:b, %{geometry: %Geo.Point{coordinates: {0.0, 1.0}}})
+  |> Graph.add_edge_ensure(:a, :b, nil)
+  |> Meridian.CRS.compute_edge_weights()
+
+Graph.edges(weighted_graph)
+```
+
+### Bounding box
+
+```elixir
+bounded = Graph.recompute_bounds(graph)
+Meridian.CRS.bbox(bounded)
+```
+
+## Geometry Helpers
+
+`Meridian.Geometry` provides CRS-agnostic geometric operations.
+
+```elixir
+alias Meridian.Geometry
+
+# Euclidean distance
+a = %Geo.Point{coordinates: {0.0, 0.0}}
+b = %Geo.Point{coordinates: {3.0, 4.0}}
+Geometry.euclidean(a, b)
+```
+
+```elixir
+# Haversine length of a LineString
+line = %Geo.LineString{coordinates: [{0.0, 0.0}, {0.0, 1.0}]}
+Geometry.geo_length(line)
+```
+
+```elixir
+# Point-in-polygon test
+poly = %Geo.Polygon{coordinates: [[{0, 0}, {10, 0}, {10, 10}, {0, 10}, {0, 0}]]}
+Geometry.contains?(poly, %Geo.Point{coordinates: {5, 5}})
+```
+
+```elixir
+# Centroid
+Geometry.centroid(poly)
+```
+
+## Building Grid Graphs
+
+### H3 Hexagonal Grid
+
+Requires the optional `:h3` dependency.
+
+```elixir
+h3_graph =
+  Graph.new(kind: :undirected)
+  |> Meridian.Builder.H3.grid(
+    center: {37.7749, -122.4194},
+    resolution: 5,
+    k_ring: 1
+  )
+
+Graph.node_count(h3_graph)
+```
+
+Each node carries its H3 index and cell-center geometry:
+
+```elixir
+[{id, data} | _] = Graph.nodes(h3_graph) |> Enum.to_list()
+{id, data.h3_index, data.h3_resolution, data.geometry}
+```
+
+### Geohash Rectangular Grid
+
+Requires the optional `:geohash` dependency.
+
+```elixir
+geohash_graph =
+  Graph.new(kind: :undirected)
+  |> Meridian.Builder.Geohash.grid(
+    sw: {37.7, -122.5},
+    ne: {37.8, -122.4},
+    precision: 5,
+    topology: :rook
+  )
+
+Graph.node_count(geohash_graph)
+```
+
+## GeoJSON I/O
+
+### Ingesting GeoJSON
+
+Requires the optional `:jason` dependency.
+
+```elixir
+geojson = ~s|{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"LineString","coordinates":[[0,0],[0,1]]},"properties":{"name":"road"}}]}|
+
+{:ok, road_graph} = Meridian.IO.GeoJSON.from_string(geojson)
+Graph.node_count(road_graph)
+```
+
+### Rendering to GeoJSON
+
+```elixir
+json = Meridian.Render.GeoJSON.to_string(graph, include_edges: true)
+Kino.Text.new(json, language: "json")
+```
+
+## Spatial Pathfinding
+
+Meridian wraps `yog_ex` pathfinding with geographic heuristics.
+
+```elixir
+path_graph =
+  Graph.new()
+  |> Graph.add_node(:a, %{geometry: %Geo.Point{coordinates: {0.0, 0.0}}})
+  |> Graph.add_node(:b, %{geometry: %Geo.Point{coordinates: {0.0, 1.0}}})
+  |> Graph.add_node(:c, %{geometry: %Geo.Point{coordinates: {1.0, 1.0}}})
+  |> Graph.add_edge_ensure(:a, :b, 100.0)
+  |> Graph.add_edge_ensure(:b, :c, 100.0)
+  |> Graph.add_edge_ensure(:a, :c, 500.0)
+
+{:ok, path} = Meridian.Pathfinding.a_star(path_graph, from: :a, to: :c)
+path
+```
+
+The A* heuristic is haversine distance, so the search is naturally pulled toward the goal in geographic space.
+
+## Merging Graphs
+
+You can merge two spatial graphs, but only if they share the same CRS:
+
+```elixir
+a = Graph.new() |> Graph.add_node(1, %{name: "A"})
+b = Graph.new() |> Graph.add_node(2, %{name: "B"}) |> Graph.add_edge_ensure(2, 1, 5)
+
+merged = Graph.merge(a, b)
+{Graph.node_count(merged), Graph.edge_count(merged)}
+```
+
+Mismatched CRS raises an error:
+
+```elixir
+c = Graph.new(crs: "EPSG:3857")
+
+# This would raise:
+# Graph.merge(a, c)
+```
+
+## Visualizing with DOT
+
+If you have `kino_vizjs` installed, you can render the graph topology as a DOT diagram:
+
+```elixir
+dot =
+  graph
+  |> Meridian.Graph.to_yog()
+  |> Yog.Render.DOT.to_dot()
+
+KinoVizjs.new(dot)
+```
+
+## Summary
+
+| Concept      | Module                     | Key Function                 |
+| ------------ | -------------------------- | ---------------------------- |
+| Create graph | `Meridian.Graph`           | `Graph.new/1`                |
+| Add node     | `Meridian.Graph`           | `Graph.add_node/3`           |
+| Distance     | `Meridian.CRS`             | `CRS.distance/3`             |
+| Edge weights | `Meridian.CRS`             | `CRS.compute_edge_weights/2` |
+| H3 grid      | `Meridian.Builder.H3`      | `H3.grid/2`                  |
+| Geohash grid | `Meridian.Builder.Geohash` | `Geohash.grid/2`             |
+| GeoJSON in   | `Meridian.IO.GeoJSON`      | `GeoJSON.from_string/2`      |
+| GeoJSON out  | `Meridian.Render.GeoJSON`  | `GeoJSON.to_string/2`        |
+| Pathfinding  | `Meridian.Pathfinding`     | `Pathfinding.a_star/2`       |
+
+## What's Next?
+
+* **OSM ingestion** — scrape real street networks from OpenStreetMap
+* **Spatial queries** — `within`, `nearest`, `network_buffer`
+* **Map rendering** — interactive Leaflet maps inside Livebook
+* **Real reprojection** — transform coordinates between CRS using PROJ
+
+See [`ROADMAP.md`](https://github.com/code-shoily/meridian/blob/main/ROADMAP.md) for the full plan.
