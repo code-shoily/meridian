@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Meridian.MultiGraph` — spatial **multigraph** wrapper around `Yog.Multi.Graph` allowing parallel edges between the same node pair. Supports `:first`, `:min_weight`, `:max_weight`, `{:mode, key}`, `{:by, selector}`, and `{:combine, fn}` collapse strategies for converting to a simple `Meridian.Graph`.
+- `Meridian.Pathfinding.shortest_path/2` — Dijkstra shortest-path wrapper with the same `:weight_fn` and `:node_filter` options as `a_star/2`.
+- `Meridian.Pathfinding.widest_path/2` — maximum bottleneck capacity path wrapper.
+- `:weight_fn` now receives edge `data` as a fourth argument (`graph, from, to, data`). Return `nil` or `:infinity` to dynamically exclude edges.
+- `:node_filter` option on all pathfinding functions to exclude nodes and all incident edges.
+
 ## [0.1.0] - 2026-05-09
 
 ### Added

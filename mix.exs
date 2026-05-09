@@ -102,7 +102,8 @@ defmodule Meridian.MixProject do
       groups_for_modules: [
         Core: [
           Meridian,
-          Meridian.Graph
+          Meridian.Graph,
+          Meridian.MultiGraph
         ],
         "Coordinate Systems": [
           Meridian.CRS,
