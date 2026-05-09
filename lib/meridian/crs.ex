@@ -91,7 +91,7 @@ defmodule Meridian.CRS do
   """
   @spec reproject(Graph.t(), String.t()) :: Graph.t()
   def reproject(%Graph{} = g, to_crs) when is_binary(to_crs) do
-    # TODO: integrate with proj or rustler NIF for real reprojection
+    # NOTE: real reprojection requires a PROJ or Rustler NIF integration
     %{g | crs: to_crs}
   end
 

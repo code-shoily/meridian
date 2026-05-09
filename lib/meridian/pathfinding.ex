@@ -7,6 +7,7 @@ defmodule Meridian.Pathfinding do
   """
 
   alias Meridian.{CRS, Graph}
+  alias Yog.Pathfinding.AStar
 
   @doc """
   A* shortest path using haversine distance as the heuristic.
@@ -61,7 +62,7 @@ defmodule Meridian.Pathfinding do
       end
     end
 
-    Yog.Pathfinding.AStar.a_star(
+    AStar.a_star(
       simple,
       from,
       to,

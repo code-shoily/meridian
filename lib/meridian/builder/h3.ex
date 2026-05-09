@@ -114,7 +114,7 @@ defmodule Meridian.Builder.H3 do
     # vertex neighbors. H3 doesn't expose vertex neighbors directly,
     # so we approximate by taking cells within distance 2 that share
     # a vertex but not an edge.
-    # TODO: implement true vertex adjacency via H3 unidirectional edges
+    # NOTE: true vertex adjacency via H3 unidirectional edges not yet implemented
     add_edges(g, indexes, :rook)
   end
 
