@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `:weight_fn` now receives edge `data` as a fourth argument (`graph, from, to, data`). Return `nil` or `:infinity` to dynamically exclude edges.
 - `:node_filter` option on all pathfinding functions to exclude nodes and all incident edges.
 - `Meridian.Spatial` — proximity queries (`within/3`, `nearest/3`) with `:metric` (`:haversine` / `:euclidean`) and `:filter` options.
+- `Meridian.Analysis.diameter/2` — exact geographic diameter computed via parallel all-pairs Dijkstra. Returns `%{distance_m, from, to, path}` or `nil` for empty/disconnected graphs. Supports custom `:weight_fn`.
+- Full test suite for `Meridian.Analysis` (`test/meridian/analysis_test.exs`) covering diameter edge cases (empty, single-node, disconnected, custom weights, nil/`:infinity` filtering) and `average_edge_length/1`.
 
 ## [0.1.0] - 2026-05-09
 
