@@ -45,8 +45,8 @@ Meridian.Builder.OSM.from_bbox(
 ```elixir
 graph =
   Meridian.Builder.OSM.from_bbox(
-    sw: {40.7484, -73.9857},
-    ne: {40.7589, -73.9772},
+    sw: {43.6426, -79.3871},
+    ne: {43.6487, -79.3753},
     highway: ["primary", "secondary", "tertiary", "residential"]
   )
 
@@ -66,7 +66,7 @@ For users who already have Overpass data:
 
 ```elixir
 # NOT in v0.2.0
-Meridian.Builder.OSM.from_pbf("nyc.osm.pbf", highway: [...])
+Meridian.Builder.OSM.from_pbf("toronto.osm.pbf", highway: [...])
 ```
 
 ## 5. Data Model
@@ -86,7 +86,7 @@ Meridian.Builder.OSM.from_pbf("nyc.osm.pbf", highway: [...])
 ```elixir
 %{
   osm_way_id: 789_012,
-  name: "Broadway",
+  name: "Bay St",
   highway: "primary",
   oneway: true,           # inferred from OSM tag
   maxspeed: 40,           # parsed from tag when present

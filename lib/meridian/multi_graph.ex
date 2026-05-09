@@ -141,9 +141,9 @@ defmodule Meridian.MultiGraph do
   ## Examples
 
       iex> g = Meridian.MultiGraph.new()
-      iex> g = Meridian.MultiGraph.add_node(g, :nyc, %{name: "New York"})
-      iex> Meridian.MultiGraph.node(g, :nyc)
-      %{name: "New York"}
+      iex> g = Meridian.MultiGraph.add_node(g, :toronto, %{name: "Toronto"})
+      iex> Meridian.MultiGraph.node(g, :toronto)
+      %{name: "Toronto"}
   """
   @spec add_node(t(), Yog.node_id(), any()) :: t()
   def add_node(%__MODULE__{graph: graph} = mg, id, data) do

@@ -186,10 +186,10 @@ defmodule Meridian.Graph do
   ## Examples
 
       iex> g = Meridian.Graph.new()
-      iex> point = %Geo.Point{coordinates: {-73.9857, 40.7484}}
-      iex> g = Meridian.Graph.add_node(g, :nyc, %{geometry: point, name: "NYC"})
-      iex> Meridian.Graph.node(g, :nyc).name
-      "NYC"
+      iex> point = %Geo.Point{coordinates: {-79.3832, 43.6532}}
+      iex> g = Meridian.Graph.add_node(g, :toronto, %{geometry: point, name: "Toronto"})
+      iex> Meridian.Graph.node(g, :toronto).name
+      "Toronto"
   """
   @spec add_node(t(), Yog.node_id(), map()) :: t()
   def add_node(%__MODULE__{graph: graph} = mg, id, data) do

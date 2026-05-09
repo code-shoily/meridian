@@ -34,6 +34,10 @@ This is a living document. Checked items ship with the tagged version; unchecked
 ## Pathfinding & Analysis
 
 - [x] A* with haversine heuristic
+- [x] Dijkstra shortest path (`shortest_path/2`)
+- [x] Widest path / maximum bottleneck (`widest_path/2`)
+- [x] Dynamic edge filtering via `:infinity` / `nil` weights
+- [x] Dynamic node filtering via `:node_filter`
 - [ ] `Meridian.Pathfinding.yen` — k-shortest paths with spatial pruning
 - [ ] `Meridian.Spatial.within/3` — all nodes within radius
 - [ ] `Meridian.Spatial.nearest/3` — nearest N nodes by crow-flies
@@ -43,7 +47,7 @@ This is a living document. Checked items ship with the tagged version; unchecked
 
 ## Visualization
 
-- [ ] `KinoMeridian` — Livebook map renderer (Leaflet / MapLibre)
+- [x] `Meridian.Render.MapLibre` — Livebook map renderer via MapLibre
 - [ ] Choropleth / heatmap layer generation from graph metrics
 - [ ] Animated path playback on map
 
@@ -53,10 +57,16 @@ This is a living document. Checked items ship with the tagged version; unchecked
 - [ ] Streaming OSM ingestion (process planet files without loading into memory)
 - [ ] Parallel graph construction for large grids
 
+## Experimental
+
+- [x] `Meridian.MultiGraph` — multigraph wrapper around `Yog.Multi.Graph` (may change or be removed)
+
 ## Docs & Tooling
 
 - [x] Doctests enabled
 - [x] Credo clean
 - [x] Dialyzer clean
+- [x] ExCoveralls with 80% minimum threshold
+- [x] Livebook getting-started guide
 - [ ] Livebook guides — "Building a street network from OSM", "H3-based delivery zones"
 - [ ] HexDocs with embedded map widgets

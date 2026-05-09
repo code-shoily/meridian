@@ -42,7 +42,7 @@ Meridian keeps its core lightweight. Heavy or native dependencies are optional:
 ```elixir
 graph =
   Meridian.Graph.new(kind: :undirected)
-  |> Meridian.Builder.H3.grid(center: {40.7484, -73.9857}, resolution: 9, k_ring: 2)
+  |> Meridian.Builder.H3.grid(center: {43.6453, -79.3806}, resolution: 9, k_ring: 2)
 
 Meridian.Graph.node_count(graph)
 #=> 19
@@ -54,8 +54,8 @@ Meridian.Graph.node_count(graph)
 graph =
   Meridian.Graph.new(kind: :undirected)
   |> Meridian.Builder.Geohash.grid(
-       sw: {40.6, -74.1},
-       ne: {40.8, -73.9},
+       sw: {43.6, -79.4},
+       ne: {43.7, -79.3},
        precision: 5,
        topology: :rook
      )
@@ -150,12 +150,14 @@ Yog.Pathfinding.Dijkstra.shortest_path(yog, from: :a, to: :b)
 
 ## Roadmap
 
-- [ ] OSM Overpass / PBF ingestion
-- [ ] Network buffers and reachable-area queries
-- [ ] Spatial indexing (R-tree or H3-based)
-- [ ] Real CRS reprojection (PROJ / Rustler)
-- [ ] Kino / Livebook map rendering
-- [ ] MVT (Mapbox Vector Tile) encoding
+See [`ROADMAP.md`](./ROADMAP.md) for the full plan, priorities, and what's up for grabs.
+
+Highlights:
+- ✅ Spatial graph with CRS, GeoJSON I/O, H3/geohash builders
+- ✅ Spatial pathfinding — A*, Dijkstra, widest path
+- ✅ Livebook map rendering via MapLibre
+- 🔄 OpenStreetMap ingestion (design doc ready, see [#1](https://github.com/code-shoily/meridian/issues/1))
+- ⏳ Network buffers, spatial indexing, real CRS reprojection
 
 ## License
 
