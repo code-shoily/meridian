@@ -115,7 +115,8 @@ reference system. Merging two graphs with different CRS values raises an
 | `Meridian.Graph` | Spatial graph struct, queries, and modifications |
 | `Meridian.CRS` | Earth-aware distances, edge-weight computation, bounding boxes |
 | `Meridian.Geometry` | CRS-agnostic geometric helpers (euclidean, centroid, contains?) |
-| `Meridian.Pathfinding` | Spatially-informed A* with haversine heuristics |
+| `Meridian.Pathfinding` | Spatially-informed A*, Dijkstra, widest path |
+| `Meridian.Spatial` | Proximity queries: `within/3`, `nearest/3` |
 | `Meridian.Builder.H3` | Hexagonal grid graphs via Uber H3 |
 | `Meridian.Builder.Geohash` | Rectangular grid graphs via geohash |
 | `Meridian.IO.GeoJSON` | GeoJSON → graph ingestion |

@@ -39,8 +39,8 @@ This is a living document. Checked items ship with the tagged version; unchecked
 - [x] Dynamic edge filtering via `:infinity` / `nil` weights
 - [x] Dynamic node filtering via `:node_filter`
 - [ ] `Meridian.Pathfinding.yen` — k-shortest paths with spatial pruning
-- [ ] `Meridian.Spatial.within/3` — all nodes within radius
-- [ ] `Meridian.Spatial.nearest/3` — nearest N nodes by crow-flies
+- [x] `Meridian.Spatial.within/3` — all nodes within radius
+- [x] `Meridian.Spatial.nearest/3` — nearest N nodes by crow-flies
 - [ ] `Meridian.Spatial.nearest_reachable/3` — nearest node satisfying predicate via road network
 - [ ] `Meridian.Analysis.alpha_shape` — concave hull of graph nodes
 - [ ] `Meridian.Analysis.connected_components_by_distance` — components within threshold
