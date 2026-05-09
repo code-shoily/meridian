@@ -57,3 +57,19 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
       run: mix coveralls.github
+
+    - name: Enforce minimum coverage threshold
+      env:
+        MIX_ENV: test
+      run: mix coveralls
+
+    - name: Generate coverage JSON artifact
+      env:
+        MIX_ENV: test
+      run: mix coveralls.json
+
+    - name: Upload coverage artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: coveralls-json
+        path: cover/excoveralls.json
