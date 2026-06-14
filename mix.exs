@@ -99,7 +99,9 @@ defmodule Meridian.MixProject do
       extras: [
         "README.md",
         {"livebooks/guides/getting_started.livemd",
-         [filename: "getting_started", title: "Getting Started"]}
+         [filename: "getting_started", title: "Getting Started"]},
+        {"livebooks/guides/osm_demo.livemd",
+         [filename: "osm_demo", title: "OpenStreetMap & Pathfinding"]}
       ],
       source_ref: "v#{@version}",
       source_url: @source_url,

@@ -1,0 +1,180 @@
+# OpenStreetMap Ingestion, Pathfinding, and Visualization with Meridian
+
+```elixir
+Mix.install([
+  {:meridian, path: "/home/mafinar/repos/elixir/meridian"},
+  {:kino, "~> 0.14"},
+  {:kino_maplibre, "~> 0.1"},
+  {:jason, "~> 1.4"},
+  {:req, "~> 0.5"},
+  {:pbf_parser, "~> 0.1.2"}
+])
+```
+
+## Introduction
+
+This notebook demonstrates how to:
+1. Ingest real-world road networks directly from **OpenStreetMap (OSM)** using the Overpass API or local `.osm.pbf` files.
+2. Build a spatially-aware routing graph using **Meridian**.
+3. Render the network as an interactive **MapLibre** wiregraph.
+4. Calculate shortest paths using **Zog-accelerated** pathfinding algorithms and overlay routes.
+
+---
+
+## 1. Querying OSM via Overpass API
+
+We'll query a small bounding box in downtown Toronto (around the CN Tower and Rogers Centre) to retrieve road network data.
+
+```elixir
+# Define bounding box coordinates (south-west and north-east corners)
+# Format: {latitude, longitude}
+sw = {43.6416, -79.3950}
+ne = {43.6496, -79.3810}
+
+# Fetch the road network and build a Meridian.Graph
+{:ok, graph} =
+  Meridian.Builder.OSM.from_bbox(
+    sw: sw,
+    ne: ne,
+    highway: ["primary", "secondary", "tertiary", "residential", "motorway", "trunk", "unclassified"],
+    oneway_as_directed: true
+  )
+
+# Inspect the resulting graph
+inspect(graph)
+```
+
+Let's look at the counts of parsed nodes and edges:
+
+```elixir
+IO.puts("Nodes (intersections): #{Meridian.Graph.node_count(graph)}")
+IO.puts("Edges (road segments): #{Meridian.Graph.edge_count(graph)}")
+```
+
+---
+
+## 2. Interactive Wiregraph Visualization
+
+Meridian integrates with **MapLibre** to draw spatial graphs on top of interactive map tiles. The nodes are represented as points, and edges are drawn as lines linking the intersections.
+
+```elixir
+# Render the graph as an interactive wiregraph layer
+Meridian.Render.MapLibre.new(graph,
+  style: :default,
+  zoom: 15,
+  node_color: "#ff3838",    # Vibrant red for intersections
+  node_radius: 5,
+  edge_color: "#17c0eb",    # Sleek cyan for road segments
+  edge_width: 2
+)
+```
+
+---
+
+## 3. PBF Ingestion
+
+If you have a local `.osm.pbf` file (e.g., downloaded from BBBike or Geofabrik), you can load it directly into a `Meridian.Graph` without using the internet/Overpass API:
+
+```elixir
+# Example syntax:
+# {:ok, graph} = Meridian.Builder.OSM.from_pbf("path/to/toronto.osm.pbf")
+```
+
+---
+
+## 4. Zog-Accelerated Pathfinding
+
+Meridian automatically leverages the NIF-backed **`Zog`** engine to run high-performance A* and Dijkstra pathfinding algorithms at native machine speeds.
+
+Let's find the shortest path between two random intersections in our graph:
+
+```elixir
+# Pick two node IDs from the graph
+node_ids = Map.keys(Meridian.Graph.nodes(graph))
+start_node = Enum.at(node_ids, 0)
+goal_node = Enum.at(node_ids, min(50, length(node_ids) - 1))
+
+IO.puts("Routing from intersection #{start_node} to #{goal_node}...")
+
+# Run accelerated A* pathfinding
+{:ok, path} =
+  Meridian.Pathfinding.a_star(graph,
+    from: start_node,
+    to: goal_node
+  )
+
+# Inspect the result
+IO.inspect(path)
+```
+
+---
+
+## 5. Overlaying a Route on the Map
+
+We can highlight the calculated shortest path route on top of our road network map by adding a custom GeoJSON LineString layer in MapLibre:
+
+```elixir
+# Convert the route node IDs into coordinates
+route_coords =
+  Enum.map(path.nodes, fn node_id ->
+    case Meridian.Graph.node(graph, node_id) do
+      %{geometry: %Geo.Point{coordinates: {lon, lat}}} -> [lon, lat]
+      _ -> nil
+    end
+  end)
+  |> Enum.reject(&is_nil/1)
+
+# Build a GeoJSON source for the route line
+route_geojson = %{
+  "type" => "FeatureCollection",
+  "features" => [
+    %{
+      "type" => "Feature",
+      "geometry" => %{
+        "type" => "LineString",
+        "coordinates" => route_coords
+      },
+      "properties" => %{}
+    }
+  ]
+}
+
+# Convert the base graph to GeoJSON
+geojson =
+  graph
+  |> Meridian.Render.GeoJSON.to_string()
+  |> Jason.decode!()
+
+# Build the MapLibre spec with graph and highlighted route line
+ml =
+  MapLibre.new(center: {-79.3871, 43.6426}, zoom: 15)
+  |> MapLibre.add_source("graph", type: :geojson, data: geojson)
+  # Base road segments
+  |> MapLibre.add_layer(
+    id: "graph-edges",
+    type: :line,
+    source: "graph",
+    filter: ["==", ["geometry-type"], "LineString"],
+    paint: [line_color: "#7f8c8d", line_width: 1.5]
+  )
+  # Intersections
+  |> MapLibre.add_layer(
+    id: "graph-nodes",
+    type: :circle,
+    source: "graph",
+    filter: ["==", ["geometry-type"], "Point"],
+    paint: [circle_color: "#7f8c8d", circle_radius: 3]
+  )
+  # Add route source
+  |> MapLibre.add_source("route", type: :geojson, data: route_geojson)
+  # Highlighted route layer on top
+  |> MapLibre.add_layer(
+    id: "route-line",
+    type: :line,
+    source: "route",
+    paint: [line_color: "#ff3838", line_width: 5, line_opacity: 0.85],
+    layout: [line_join: "round", line_cap: "round"]
+  )
+
+Kino.MapLibre.new(ml)
+```
