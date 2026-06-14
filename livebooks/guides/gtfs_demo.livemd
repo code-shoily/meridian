@@ -13,6 +13,7 @@ Mix.install([
 This notebook demonstrates the **General Transit Feed Specification (GTFS)** integration in **Meridian**.
 
 Timetable-based transit routing requires a different model than standard road routing:
+
 1. **Nodes** represent physical transit stops (e.g., platforms, bus stations).
 2. **Edges** represent stop-to-stop segments carrying a list of scheduled transit connections (trips) rather than static distances or weights.
 3. **Routing** uses the **Connection-Scan Algorithm (CSA)**, a highly efficient algorithm designed for earliest-arrival journey planning on timetable networks.

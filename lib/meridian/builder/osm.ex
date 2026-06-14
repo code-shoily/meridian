@@ -59,13 +59,13 @@ defmodule Meridian.Builder.OSM do
     url = "https://overpass-api.de/api/interpreter"
 
     case Req.post(url, form: [data: query]) do
-      {:ok, %Req.Response{status: 200, body: body}} ->
+      {:ok, %{__struct__: Req.Response, status: 200, body: body}} ->
         from_overpass_json(body, opts)
 
-      {:ok, %Req.Response{status: 429}} ->
+      {:ok, %{__struct__: Req.Response, status: 429}} ->
         {:error, "Overpass rate limit"}
 
-      {:ok, %Req.Response{status: status}} ->
+      {:ok, %{__struct__: Req.Response, status: status}} ->
         {:error, "Overpass query failed with status #{status}"}
 
       {:error, %{reason: reason}} ->
@@ -197,7 +197,7 @@ defmodule Meridian.Builder.OSM do
 
   defp collect_way_refs(decoded, highway_types) do
     Enum.reduce(decoded, MapSet.new(), fn
-      %PBFParser.Data.Way{} = way, acc ->
+      %{__struct__: PBFParser.Data.Way} = way, acc ->
         highway = Map.get(way.tags || %{}, "highway")
 
         if is_binary(highway) and highway in highway_types do
@@ -215,7 +215,7 @@ defmodule Meridian.Builder.OSM do
     decoded = parser.decode_block(parser.decompress_block(block))
 
     Enum.reduce(decoded, %{nodes: %{}, ways: []}, fn
-      %PBFParser.Data.Node{} = node, acc_inner ->
+      %{__struct__: PBFParser.Data.Node} = node, acc_inner ->
         if MapSet.member?(required_node_ids, node.id) do
           nodes_new =
             Map.put(
@@ -229,7 +229,7 @@ defmodule Meridian.Builder.OSM do
           acc_inner
         end
 
-      %PBFParser.Data.Way{} = way, acc_inner ->
+      %{__struct__: PBFParser.Data.Way} = way, acc_inner ->
         highway = Map.get(way.tags || %{}, "highway")
 
         if is_binary(highway) and highway in highway_types do
