@@ -208,5 +208,32 @@ defmodule Meridian.Builder.OSMTest do
       assert Map.has_key?(g.graph.out_edges[3], 1)
       refute Map.get(g.graph.out_edges, 2, %{}) |> Map.has_key?(1)
     end
+
+    test "streams and builds native Zog ResourceGraph from PBF file" do
+      assert {:ok, %{graph: res_graph, x_coords: x_coords, y_coords: y_coords}} =
+               OSMBuilder.from_pbf("fake.osm.pbf",
+                 parser_module: MockPBFParser,
+                 output: :resource_graph
+               )
+
+      assert is_map(res_graph)
+      assert Map.has_key?(res_graph, :resource)
+      assert Map.has_key?(res_graph, :builder)
+      assert is_map(x_coords)
+      assert is_map(y_coords)
+      assert Map.keys(x_coords) == [1, 3]
+      assert Map.keys(y_coords) == [1, 3]
+
+      # Check coordinates
+      assert x_coords[1] == -79.3871
+      assert y_coords[1] == 43.6426
+
+      # Check native properties
+      assert Zog.node_count(res_graph.builder) == 2
+      assert Zog.edge_count(res_graph.builder) == 2
+
+      # Cleanup NIF resource
+      Zog.ResourceGraph.destroy(res_graph)
+    end
   end
 end

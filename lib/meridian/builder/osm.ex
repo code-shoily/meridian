@@ -115,7 +115,7 @@ defmodule Meridian.Builder.OSM do
 
   Requires the optional `:pbf_parser` dependency.
   """
-  @spec from_pbf(Path.t(), keyword()) :: {:ok, Graph.t()} | {:error, term()}
+  @spec from_pbf(Path.t(), keyword()) :: {:ok, Graph.t() | map()} | {:error, term()}
   def from_pbf(file_path, opts \\ []) do
     parser = Keyword.get(opts, :parser_module, PBFParser)
 
@@ -128,42 +128,32 @@ defmodule Meridian.Builder.OSM do
       Keyword.get(opts, :highway, ["primary", "secondary", "tertiary", "residential"])
 
     try do
+      # Pass 1: Scan all way references in parallel to collect required node IDs
+      required_node_ids =
+        parser.stream(file_path)
+        |> Stream.drop(1)
+        |> Task.async_stream(&parse_block_required_nodes(&1, parser, highway_types),
+          max_concurrency: System.schedulers_online(),
+          timeout: :infinity
+        )
+        |> Enum.reduce(MapSet.new(), fn {:ok, set}, acc ->
+          MapSet.union(acc, set)
+        end)
+
+      # Pass 2: Filter nodes by required_node_ids and collect ways in parallel
       acc =
         parser.stream(file_path)
         |> Stream.drop(1)
-        |> Stream.map(&parser.decompress_block/1)
-        |> Stream.map(&parser.decode_block/1)
-        |> Enum.reduce(%{nodes: %{}, ways: []}, fn entities, acc ->
-          Enum.reduce(entities, acc, fn
-            %PBFParser.Data.Node{} = node, acc_inner ->
-              %{
-                acc_inner
-                | nodes:
-                    Map.put(
-                      acc_inner.nodes,
-                      node.id,
-                      {node.latitude, node.longitude, node.tags || %{}}
-                    )
-              }
-
-            %PBFParser.Data.Way{} = way, acc_inner ->
-              highway = Map.get(way.tags || %{}, "highway")
-
-              if is_binary(highway) and highway in highway_types do
-                way_map = %{
-                  id: way.id,
-                  nodes: way.refs,
-                  tags: way.tags || %{}
-                }
-
-                %{acc_inner | ways: [way_map | acc_inner.ways]}
-              else
-                acc_inner
-              end
-
-            _other, acc_inner ->
-              acc_inner
-          end)
+        |> Task.async_stream(
+          &parse_block_nodes_and_ways(&1, parser, required_node_ids, highway_types),
+          max_concurrency: System.schedulers_online(),
+          timeout: :infinity
+        )
+        |> Enum.reduce(%{nodes: %{}, ways: []}, fn {:ok, block_acc}, acc ->
+          %{
+            nodes: Map.merge(acc.nodes, block_acc.nodes),
+            ways: block_acc.ways ++ acc.ways
+          }
         end)
 
       ways_filtered =
@@ -171,10 +161,158 @@ defmodule Meridian.Builder.OSM do
           %{way | nodes: Enum.filter(way.nodes, &Map.has_key?(acc.nodes, &1))}
         end)
 
-      build_graph_from_maps(acc.nodes, ways_filtered, opts)
+      case Keyword.get(opts, :output, :meridian) do
+        :resource_graph ->
+          build_resource_graph(acc.nodes, ways_filtered, opts)
+
+        :meridian ->
+          build_graph_from_maps(acc.nodes, ways_filtered, opts)
+      end
     rescue
       err ->
         {:error, err}
+    end
+  end
+
+  defp parse_block_required_nodes(block, parser, highway_types) do
+    decompressed = parser.decompress_block(block)
+
+    has_ways? =
+      case decompressed do
+        %{primitivegroup: groups} ->
+          Enum.any?(groups, fn group -> match?([_ | _], group.ways) end)
+
+        _ ->
+          true
+      end
+
+    if has_ways? do
+      decompressed
+      |> parser.decode_block()
+      |> collect_way_refs(highway_types)
+    else
+      MapSet.new()
+    end
+  end
+
+  defp collect_way_refs(decoded, highway_types) do
+    Enum.reduce(decoded, MapSet.new(), fn
+      %PBFParser.Data.Way{} = way, acc ->
+        highway = Map.get(way.tags || %{}, "highway")
+
+        if is_binary(highway) and highway in highway_types do
+          Enum.reduce(way.refs, acc, &MapSet.put(&2, &1))
+        else
+          acc
+        end
+
+      _, acc ->
+        acc
+    end)
+  end
+
+  defp parse_block_nodes_and_ways(block, parser, required_node_ids, highway_types) do
+    decoded = parser.decode_block(parser.decompress_block(block))
+
+    Enum.reduce(decoded, %{nodes: %{}, ways: []}, fn
+      %PBFParser.Data.Node{} = node, acc_inner ->
+        if MapSet.member?(required_node_ids, node.id) do
+          nodes_new =
+            Map.put(
+              acc_inner.nodes,
+              node.id,
+              {node.latitude, node.longitude, node.tags || %{}}
+            )
+
+          %{acc_inner | nodes: nodes_new}
+        else
+          acc_inner
+        end
+
+      %PBFParser.Data.Way{} = way, acc_inner ->
+        highway = Map.get(way.tags || %{}, "highway")
+
+        if is_binary(highway) and highway in highway_types do
+          way_map = %{
+            id: way.id,
+            nodes: way.refs,
+            tags: way.tags || %{}
+          }
+
+          %{acc_inner | ways: [way_map | acc_inner.ways]}
+        else
+          acc_inner
+        end
+
+      _, acc_inner ->
+        acc_inner
+    end)
+  end
+
+  defp build_resource_graph(nodes_map, ways, opts) do
+    if not Code.ensure_loaded?(Zog) do
+      raise RuntimeError, "Zog is not loaded. Please ensure :zog is in your dependencies."
+    end
+
+    kind = Keyword.get(opts, :kind, :directed)
+
+    intersection_ids = find_intersections(ways)
+    segments = build_segments(ways, intersection_ids, nodes_map)
+
+    # Find active node IDs
+    active_node_ids =
+      Enum.reduce(segments, MapSet.new(), fn {start_id, end_id, _dir, _data}, acc ->
+        acc |> MapSet.put(start_id) |> MapSet.put(end_id)
+      end)
+
+    # Build Zog.SoA builder
+    builder = Zog.new(kind)
+
+    # Add active nodes to the builder
+    builder =
+      Enum.reduce(active_node_ids, builder, fn node_id, builder_acc ->
+        Zog.add_node(builder_acc, node_id)
+      end)
+
+    # Add edges with distance weights
+    builder =
+      Enum.reduce(segments, builder, fn {start_id, end_id, direction, edge_data}, builder_acc ->
+        add_resource_edge(builder_acc, start_id, end_id, direction, edge_data.distance_m, kind)
+      end)
+
+    # Create coordinate maps for native pathfinding
+    {x_coords, y_coords} =
+      Enum.reduce(active_node_ids, {%{}, %{}}, fn id, {xs, ys} ->
+        case Map.get(nodes_map, id) do
+          {lat, lon, _tags} ->
+            {Map.put(xs, id, lon), Map.put(ys, id, lat)}
+
+          _ ->
+            {xs, ys}
+        end
+      end)
+
+    # Create resource graph
+    resource_graph = Zog.ResourceGraph.new(builder)
+    {:ok, %{graph: resource_graph, x_coords: x_coords, y_coords: y_coords}}
+  end
+
+  defp add_resource_edge(builder, start_id, end_id, _direction, weight, :undirected) do
+    Zog.add_edge(builder, start_id, end_id, weight)
+  end
+
+  defp add_resource_edge(builder, start_id, end_id, direction, weight, :directed) do
+    case direction do
+      :forward ->
+        Zog.add_edge(builder, start_id, end_id, weight)
+
+      :reverse ->
+        Zog.add_edge(builder, end_id, start_id, weight)
+
+      :bidirectional ->
+        builder
+        |> Zog.add_edge(start_id, end_id, weight)
+        |> Zog.add_edge(end_id, start_id, weight)
     end
   end
 

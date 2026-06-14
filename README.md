@@ -157,7 +157,7 @@ Highlights:
 - ✅ Spatial graph with CRS, GeoJSON I/O, H3/geohash builders
 - ✅ Spatial pathfinding — A*, Dijkstra, widest path
 - ✅ Livebook map rendering via MapLibre
-- 🔄 OpenStreetMap ingestion (design doc ready, see [#1](https://github.com/code-shoily/meridian/issues/1))
+- ✅ OpenStreetMap ingestion (bounding box, raw JSON, and NIF-accelerated `.osm.pbf` parsing) (see [#1](https://github.com/code-shoily/meridian/issues/1))
 - ⏳ Network buffers, spatial indexing, real CRS reprojection
 
 ## License

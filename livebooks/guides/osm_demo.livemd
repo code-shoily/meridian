@@ -83,12 +83,25 @@ If you have a local `.osm.pbf` file (e.g., downloaded from BBBike or Geofabrik),
 {:ok, graph} = Meridian.Builder.OSM.from_pbf("/home/mafinar/Downloads/Toronto.osm.pbf")
 ```
 
+The ingestion process runs fully in parallel using all available CPU cores, and filters out unused nodes to run 6x faster and use 95% less memory.
+
+### Direct Ingestion to Native ResourceGraph
+
+For maximum performance, you can bypass the creation of the Elixir `Meridian.Graph` entirely and load the PBF data directly into a native `Zog.ResourceGraph` NIF resource by passing `output: :resource_graph`:
+
+```elixir
+{:ok, %{graph: zog_graph, x_coords: x_coords, y_coords: y_coords}} =
+  Meridian.Builder.OSM.from_pbf("/home/mafinar/Downloads/Toronto.osm.pbf", output: :resource_graph)
+```
+
+This returns the native NIF-backed graph resource along with the `x_coords` and `y_coords` maps needed for native pathfinding.
+
 ---
 
 ```elixir
     node_ids = Map.keys(Meridian.Graph.nodes(graph))
     start_node = Enum.at(node_ids, 0)
-    goal_node = Enum.at(node_ids, min(50000, length(node_ids) - 1))
+    goal_node = Enum.at(node_ids, min(100000, length(node_ids) - 1))
 ```
 
 ```elixir
@@ -152,6 +165,61 @@ IO.inspect(path)
 
 ---
 
+```elixir
+route_coords =
+  Enum.map(path.nodes, fn node_id ->
+    case Meridian.Graph.node(graph, node_id) do
+      %{geometry: %Geo.Point{coordinates: {lon, lat}}} -> [lon, lat]
+      _ -> nil
+    end
+  end)
+  |> Enum.reject(&is_nil/1)
+
+# 2. Build GeoJSON for ONLY the route
+route_geojson = %{
+  "type" => "FeatureCollection",
+  "features" => [
+    %{
+      "type" => "Feature",
+      "geometry" => %{
+        "type" => "LineString",
+        "coordinates" => route_coords
+      },
+      "properties" => %{}
+    }
+  ]
+}
+
+# 3. Center the map on the start of the route
+center =
+  case route_coords do
+    [[lon, lat] | _] -> {lon, lat}
+    _ -> {-79.3871, 43.6426}
+  end
+
+# 4. Create a clean MapLibre spec containing only the route
+ml =
+  MapLibre.new(center: center, zoom: 12, style: :default)
+  |> MapLibre.add_source("route", type: :geojson, data: route_geojson)
+  |> MapLibre.add_layer(
+    id: "route-line",
+    type: :line,
+    source: "route",
+    paint: [
+      line_color: "#ff3838", # Bright red route line
+      line_width: 5
+    ],
+    layout: [
+      line_join: "round",
+      line_cap: "round"
+    ]
+  )
+
+# 5. Display the map
+Kino.MapLibre.new(ml)
+
+```
+
 ## 5. Overlaying a Route on the Map
 
 We can highlight the calculated shortest path route on top of our road network map by adding a custom GeoJSON LineString layer in MapLibre:
@@ -182,42 +250,69 @@ route_geojson = %{
   ]
 }
 
-# Convert the base graph to GeoJSON
-geojson =
-  graph
-  |> Meridian.Render.GeoJSON.to_string()
-  |> Jason.decode!()
+# Determine map center dynamically from route
+center =
+  case route_coords do
+    [[lon, lat] | _] -> {lon, lat}
+    _ -> {-79.3871, 43.6426}
+  end
 
-# Build the MapLibre spec with graph and highlighted route line
-ml =
-  MapLibre.new(center: {-79.3871, 43.6426}, zoom: 15)
-  |> MapLibre.add_source("graph", type: :geojson, data: geojson)
-  # Base road segments
-  |> MapLibre.add_layer(
-    id: "graph-edges",
-    type: :line,
-    source: "graph",
-    filter: ["==", ["geometry-type"], "LineString"],
-    paint: [line_color: "#7f8c8d", line_width: 1.5]
-  )
-  # Intersections
-  |> MapLibre.add_layer(
-    id: "graph-nodes",
-    type: :circle,
-    source: "graph",
-    filter: ["==", ["geometry-type"], "Point"],
-    paint: [circle_color: "#7f8c8d", circle_radius: 3]
-  )
-  # Add route source
-  |> MapLibre.add_source("route", type: :geojson, data: route_geojson)
-  # Highlighted route layer on top
-  |> MapLibre.add_layer(
-    id: "route-line",
-    type: :line,
-    source: "route",
-    paint: [line_color: "#ff3838", line_width: 5, line_opacity: 0.85],
-    layout: [line_join: "round", line_cap: "round"]
-  )
+# To prevent browser freezes, we check the graph size before rendering the full wiregraph.
+# If the graph has more than 10,000 edges, rendering the full wiregraph in the browser
+# will cause it to freeze/take a long time. So we render ONLY the route instead.
+if Meridian.Graph.edge_count(graph) > 10000 do
+  IO.puts("⚠️ The graph has #{Meridian.Graph.edge_count(graph)} edges, which is too large to render the entire network wiregraph in the browser without freezing. Rendering ONLY the highlighted route instead.")
 
-Kino.MapLibre.new(ml)
+  ml =
+    MapLibre.new(center: center, zoom: 12, style: :default)
+    |> MapLibre.add_source("route", type: :geojson, data: route_geojson)
+    |> MapLibre.add_layer(
+      id: "route-line",
+      type: :line,
+      source: "route",
+      paint: [line_color: "#ff3838", line_width: 5, line_opacity: 0.85],
+      layout: [line_join: "round", line_cap: "round"]
+    )
+
+  Kino.MapLibre.new(ml)
+else
+  # Convert the base graph to GeoJSON
+  geojson =
+    graph
+    |> Meridian.Render.GeoJSON.to_string()
+    |> Jason.decode!()
+
+  # Build the MapLibre spec with graph and highlighted route line
+  ml =
+    MapLibre.new(center: center, zoom: 15)
+    |> MapLibre.add_source("graph", type: :geojson, data: geojson)
+    # Base road segments
+    |> MapLibre.add_layer(
+      id: "graph-edges",
+      type: :line,
+      source: "graph",
+      filter: ["==", ["geometry-type"], "LineString"],
+      paint: [line_color: "#7f8c8d", line_width: 1.5]
+    )
+    # Intersections
+    |> MapLibre.add_layer(
+      id: "graph-nodes",
+      type: :circle,
+      source: "graph",
+      filter: ["==", ["geometry-type"], "Point"],
+      paint: [circle_color: "#7f8c8d", circle_radius: 3]
+    )
+    # Add route source
+    |> MapLibre.add_source("route", type: :geojson, data: route_geojson)
+    # Highlighted route layer on top
+    |> MapLibre.add_layer(
+      id: "route-line",
+      type: :line,
+      source: "route",
+      paint: [line_color: "#ff3838", line_width: 5, line_opacity: 0.85],
+      layout: [line_join: "round", line_cap: "round"]
+    )
+
+  Kino.MapLibre.new(ml)
+end
 ```

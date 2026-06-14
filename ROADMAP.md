@@ -16,7 +16,7 @@ This is a living document. Checked items ship with the tagged version; unchecked
 
 - [x] `Meridian.Builder.H3` — hexagonal grids
 - [x] `Meridian.Builder.Geohash` — rectangular grids
-- [ ] `Meridian.Builder.OSM` — OpenStreetMap Overpass / PBF ingestion
+- [x] `Meridian.Builder.OSM` — OpenStreetMap Overpass / PBF ingestion
 - [ ] `Meridian.Builder.Delaunay` — Delaunay triangulation from point clouds
 - [ ] `Meridian.Builder.Gabriel` — Gabriel graph from point sets
 - [ ] `Meridian.Builder.Grid` — generic coordinate grid (non-geographic metric space)
@@ -26,7 +26,7 @@ This is a living document. Checked items ship with the tagged version; unchecked
 
 - [x] GeoJSON ingest (`Meridian.IO.GeoJSON`)
 - [x] GeoJSON render (`Meridian.Render.GeoJSON`)
-- [ ] OSM XML / PBF parser
+- [x] OSM PBF parser (binary) and Overpass API (JSON)
 - [ ] Shapefile ingest (via `ogr2ogr` or pure-Elixir parser)
 - [ ] GTFS ingest (transit networks)
 - [ ] MVT (Mapbox Vector Tile) encoding
