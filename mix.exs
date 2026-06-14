@@ -67,6 +67,9 @@ defmodule Meridian.MixProject do
       # Optional: HTTP client for OSM / tile APIs
       {:req, "~> 0.5", optional: true},
 
+      # Optional: OSM PBF file parser
+      {:pbf_parser, "~> 0.1.2", optional: true},
+
       # Optional: MapLibre map rendering in Livebook
       {:maplibre, "~> 0.1", optional: true},
       {:kino_maplibre, "~> 0.1", optional: true},

@@ -1,3 +1,24 @@
+defmodule MockPBFParser do
+  def stream(_path) do
+    [:header, :primitive_block]
+  end
+
+  def decompress_block(:primitive_block), do: :decompressed_block
+
+  def decode_block(:decompressed_block) do
+    [
+      %PBFParser.Data.Node{id: 1, latitude: 43.6426, longitude: -79.3871, tags: %{}},
+      %PBFParser.Data.Node{id: 2, latitude: 43.6450, longitude: -79.3850, tags: %{}},
+      %PBFParser.Data.Node{id: 3, latitude: 43.6480, longitude: -79.3830, tags: %{}},
+      %PBFParser.Data.Way{
+        id: 10,
+        refs: [1, 2, 3],
+        tags: %{"highway" => "primary", "name" => "Yonge St"}
+      }
+    ]
+  end
+end
+
 defmodule Meridian.Builder.OSMTest do
   use ExUnit.Case, async: true
 
@@ -173,6 +194,19 @@ defmodule Meridian.Builder.OSMTest do
       assert_raise ArgumentError, fn ->
         OSMBuilder.from_bbox(sw: {43.0, -79.0}, ne: {44.0, -80.0})
       end
+    end
+  end
+
+  describe "from_pbf/2" do
+    test "streams and builds graph from PBF file" do
+      assert {:ok, g} = OSMBuilder.from_pbf("fake.osm.pbf", parser_module: MockPBFParser)
+
+      # 1 and 3 are endpoints, node 2 is an intermediate node and should be dropped
+      assert Graph.node_count(g) == 2
+      assert Graph.edge_count(g) == 2
+      assert Map.has_key?(g.graph.out_edges[1], 3)
+      assert Map.has_key?(g.graph.out_edges[3], 1)
+      refute Map.get(g.graph.out_edges, 2, %{}) |> Map.has_key?(1)
     end
   end
 end

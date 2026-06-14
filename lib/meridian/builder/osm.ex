@@ -2,10 +2,10 @@ defmodule Meridian.Builder.OSM do
   @moduledoc """
   Builds graphs from OpenStreetMap (OSM) data.
 
-  Requires the optional `:req` and `:jason` dependencies.
+  Requires the optional `:req`, `:jason`, and `:pbf_parser` dependencies.
 
-  This builder converts OSM bounding-box queries (via the Overpass API)
-  or raw Overpass JSON responses into a `Meridian.Graph`.
+  This builder converts OSM bounding-box queries (via the Overpass API),
+  raw Overpass JSON responses, or OSM `.osm.pbf` files into a `Meridian.Graph`.
   """
 
   alias Meridian.Graph
@@ -110,6 +110,73 @@ defmodule Meridian.Builder.OSM do
     end
   end
 
+  @doc """
+  Constructs a `Meridian.Graph` from an OSM PBF (.osm.pbf) file.
+
+  Requires the optional `:pbf_parser` dependency.
+  """
+  @spec from_pbf(Path.t(), keyword()) :: {:ok, Graph.t()} | {:error, term()}
+  def from_pbf(file_path, opts \\ []) do
+    parser = Keyword.get(opts, :parser_module, PBFParser)
+
+    if parser == PBFParser and not Code.ensure_loaded?(PBFParser) do
+      raise RuntimeError,
+            "Meridian.Builder.OSM requires the :pbf_parser dependency. Add `{:pbf_parser, \"~> 0.1.2\"}` to your deps."
+    end
+
+    highway_types =
+      Keyword.get(opts, :highway, ["primary", "secondary", "tertiary", "residential"])
+
+    try do
+      acc =
+        parser.stream(file_path)
+        |> Stream.drop(1)
+        |> Stream.map(&parser.decompress_block/1)
+        |> Stream.map(&parser.decode_block/1)
+        |> Enum.reduce(%{nodes: %{}, ways: []}, fn entities, acc ->
+          Enum.reduce(entities, acc, fn
+            %PBFParser.Data.Node{} = node, acc_inner ->
+              node_map = %{
+                id: node.id,
+                lat: node.latitude,
+                lon: node.longitude,
+                tags: node.tags || %{}
+              }
+
+              put_in(acc_inner.nodes[node.id], node_map)
+
+            %PBFParser.Data.Way{} = way, acc_inner ->
+              highway = Map.get(way.tags || %{}, "highway")
+
+              if is_binary(highway) and highway in highway_types do
+                way_map = %{
+                  id: way.id,
+                  nodes: way.refs,
+                  tags: way.tags || %{}
+                }
+
+                %{acc_inner | ways: [way_map | acc_inner.ways]}
+              else
+                acc_inner
+              end
+
+            _other, acc_inner ->
+              acc_inner
+          end)
+        end)
+
+      ways_filtered =
+        Enum.map(acc.ways, fn way ->
+          %{way | nodes: Enum.filter(way.nodes, &Map.has_key?(acc.nodes, &1))}
+        end)
+
+      build_graph_from_maps(acc.nodes, ways_filtered, opts)
+    rescue
+      err ->
+        {:error, err}
+    end
+  end
+
   # --------------------------------------------------------------------------
   # Private functions
   # --------------------------------------------------------------------------
@@ -121,14 +188,19 @@ defmodule Meridian.Builder.OSM do
   end
 
   defp build_graph_from_elements(elements, opts) do
-    kind = Keyword.get(opts, :kind, :directed)
-    oneway_as_directed = Keyword.get(opts, :oneway_as_directed, true)
-
     highway_types =
       Keyword.get(opts, :highway, ["primary", "secondary", "tertiary", "residential"])
 
     nodes_map = index_nodes(elements)
     ways = index_ways(elements, nodes_map, highway_types)
+
+    build_graph_from_maps(nodes_map, ways, opts)
+  end
+
+  defp build_graph_from_maps(nodes_map, ways, opts) do
+    kind = Keyword.get(opts, :kind, :directed)
+    oneway_as_directed = Keyword.get(opts, :oneway_as_directed, true)
+
     intersection_ids = find_intersections(ways)
     segments = build_segments(ways, intersection_ids, nodes_map)
 
