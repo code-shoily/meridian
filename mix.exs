@@ -47,8 +47,9 @@ defmodule Meridian.MixProject do
 
   defp deps do
     [
-      # Core
-      {:yog_ex, "~> 0.97"},
+      {:yog_ex, "~> 0.98"},
+      {:zog, path: "../zog", optional: true},
+      {:zigler, "~> 0.16.0", runtime: false, optional: true},
 
       # Geometry & projections
       {:geo, "~> 3.6"},
@@ -71,7 +72,7 @@ defmodule Meridian.MixProject do
       {:kino_maplibre, "~> 0.1", optional: true},
 
       # Dev & Test
-      {:ex_doc, "~> 0.40", only: :dev, runtime: false},
+      {:ex_doc, "~> 0.39", runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.18", only: [:dev, :test]}

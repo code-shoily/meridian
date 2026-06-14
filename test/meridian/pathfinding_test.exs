@@ -108,6 +108,28 @@ defmodule Meridian.PathfindingTest do
       assert {:ok, path} = Pathfinding.a_star(g, from: :a, to: :b, weight_fn: weight_fn)
       assert path.nodes == [:a, :b]
     end
+
+    test "Zog A* acceleration parity with fallback" do
+      g =
+        Graph.new()
+        |> Graph.add_node(:a, %{geometry: %Geo.Point{coordinates: {0.0, 0.0}}})
+        |> Graph.add_node(:b, %{geometry: %Geo.Point{coordinates: {0.0, 0.01}}})
+        |> Graph.add_node(:c, %{geometry: %Geo.Point{coordinates: {0.0, 0.02}}})
+        |> Graph.add_edge_ensure(:a, :b, nil)
+        |> Graph.add_edge_ensure(:b, :c, nil)
+
+      # 1. Zog-accelerated path (no filters)
+      assert {:ok, path_zog} = Pathfinding.a_star(g, from: :a, to: :c)
+
+      # 2. Fallback path (with dummy filter)
+      dummy_filter = fn _, _ -> true end
+
+      assert {:ok, path_fallback} =
+               Pathfinding.a_star(g, from: :a, to: :c, node_filter: dummy_filter)
+
+      assert path_zog.nodes == path_fallback.nodes
+      assert_in_delta path_zog.weight, path_fallback.weight, 1.0e-3
+    end
   end
 
   describe "shortest_path/2" do
@@ -150,6 +172,28 @@ defmodule Meridian.PathfindingTest do
                )
 
       assert path.nodes == [:a, :c]
+    end
+
+    test "Zog Dijkstra acceleration parity with fallback" do
+      g =
+        Graph.new()
+        |> Graph.add_node(:a, %{geometry: %Geo.Point{coordinates: {0.0, 0.0}}})
+        |> Graph.add_node(:b, %{geometry: %Geo.Point{coordinates: {0.0, 0.01}}})
+        |> Graph.add_node(:c, %{geometry: %Geo.Point{coordinates: {0.0, 0.02}}})
+        |> Graph.add_edge_ensure(:a, :b, nil)
+        |> Graph.add_edge_ensure(:b, :c, nil)
+
+      # 1. Zog-accelerated path (no filters)
+      assert {:ok, path_zog} = Pathfinding.shortest_path(g, from: :a, to: :c)
+
+      # 2. Fallback path (with dummy filter)
+      dummy_filter = fn _, _ -> true end
+
+      assert {:ok, path_fallback} =
+               Pathfinding.shortest_path(g, from: :a, to: :c, node_filter: dummy_filter)
+
+      assert path_zog.nodes == path_fallback.nodes
+      assert_in_delta path_zog.weight, path_fallback.weight, 1.0e-3
     end
   end
 

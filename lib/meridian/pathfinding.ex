@@ -86,24 +86,23 @@ defmodule Meridian.Pathfinding do
     node_filter = Keyword.get(opts, :node_filter, fn _, _ -> true end)
 
     validate_nodes!(graph, from, to)
-    simple = build_simple_graph(graph, weight_fn, node_filter)
 
-    heuristic = fn current, _goal ->
-      case CRS.distance(graph, current, to) do
-        nil -> 0.0
-        d -> d
-      end
+    if Code.ensure_loaded?(Zog) and not Keyword.has_key?(opts, :weight_fn) and
+         not Keyword.has_key?(opts, :node_filter) do
+      run_zog_astar(graph, from, to)
+    else
+      simple = build_simple_graph(graph, weight_fn, node_filter)
+
+      AStar.a_star(
+        simple,
+        from,
+        to,
+        haversine_heuristic(graph, to),
+        0.0,
+        &Kernel.+/2,
+        &Kernel.<=/2
+      )
     end
-
-    AStar.a_star(
-      simple,
-      from,
-      to,
-      heuristic,
-      0.0,
-      &Kernel.+/2,
-      &Kernel.<=/2
-    )
   end
 
   # ============================================================================
@@ -147,13 +146,19 @@ defmodule Meridian.Pathfinding do
     node_filter = Keyword.get(opts, :node_filter, fn _, _ -> true end)
 
     validate_nodes!(graph, from, to)
-    simple = build_simple_graph(graph, weight_fn, node_filter)
 
-    Dijkstra.shortest_path(
-      in: simple,
-      from: from,
-      to: to
-    )
+    if Code.ensure_loaded?(Zog) and not Keyword.has_key?(opts, :weight_fn) and
+         not Keyword.has_key?(opts, :node_filter) do
+      run_zog_dijkstra(graph, from, to)
+    else
+      simple = build_simple_graph(graph, weight_fn, node_filter)
+
+      Dijkstra.shortest_path(
+        in: simple,
+        from: from,
+        to: to
+      )
+    end
   end
 
   # ============================================================================
@@ -265,6 +270,54 @@ defmodule Meridian.Pathfinding do
       if is_number(w), do: Yog.Model.add_edge!(g, from, to, w), else: g
     else
       g
+    end
+  end
+
+  defp run_zog_astar(graph, from, to) do
+    graph_with_weights = CRS.compute_edge_weights(graph)
+    builder = Zog.from_graph(graph_with_weights.graph)
+
+    {x_coords, y_coords} =
+      Enum.reduce(graph.graph.nodes, {%{}, %{}}, fn {id, data}, {xs, ys} ->
+        case data do
+          %{geometry: %Geo.Point{coordinates: {lon, lat}}} ->
+            {Map.put(xs, id, lon), Map.put(ys, id, lat)}
+
+          _ ->
+            {xs, ys}
+        end
+      end)
+
+    case Zog.Pathfinding.astar(builder, from, to, x_coords, y_coords, :euclidean) do
+      {:ok, {path, weight}} ->
+        {:ok,
+         %Yog.Pathfinding.Path{nodes: path, weight: weight, algorithm: :a_star, metadata: %{}}}
+
+      {:error, :no_path} ->
+        {:error, :no_path}
+    end
+  end
+
+  defp run_zog_dijkstra(graph, from, to) do
+    graph_with_weights = CRS.compute_edge_weights(graph)
+    builder = Zog.from_graph(graph_with_weights.graph)
+
+    case Zog.Pathfinding.dijkstra(builder, from, to) do
+      {:ok, {path, weight}} ->
+        {:ok,
+         %Yog.Pathfinding.Path{nodes: path, weight: weight, algorithm: :dijkstra, metadata: %{}}}
+
+      {:error, :no_path} ->
+        {:error, :no_path}
+    end
+  end
+
+  defp haversine_heuristic(graph, to) do
+    fn current, _goal ->
+      case CRS.distance(graph, current, to) do
+        nil -> 0.0
+        d -> d
+      end
     end
   end
 end
