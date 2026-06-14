@@ -23,6 +23,7 @@ defmodule Meridian.Pathfinding do
       Meridian.Pathfinding.shortest_path(graph, from: :a, to: :b, node_filter: node_filter)
   """
 
+  alias Meridian.Builder.GTFS
   alias Meridian.{CRS, Graph}
   alias Yog.Pathfinding.{AStar, Dijkstra}
 
@@ -318,6 +319,349 @@ defmodule Meridian.Pathfinding do
         nil -> 0.0
         d -> d
       end
+    end
+  end
+
+  # ============================================================================
+  # GTFS earliest_arrival/2 (Connection-Scan Algorithm)
+  # ============================================================================
+
+  @doc """
+  Runs the Connection-Scan Algorithm (CSA) to find the earliest arrival journey
+  between two stops in a GTFS timetable graph.
+
+  ## Options
+
+    * `:from` — origin stop ID (required)
+    * `:to` — destination stop ID (required)
+    * `:departure_time` — Time struct of departure (required)
+    * `:date` — Date struct to filter active calendar schedules (optional)
+    * `:max_transfers` — maximum allowed transfers (optional)
+    * `:walk_speed_mps` — walk speed in meters per second (default: `1.4`)
+    * `:max_walk_transfer_m` — maximum walk distance in meters (optional)
+
+  ## Examples
+
+      # {:ok, journey} = Meridian.Pathfinding.earliest_arrival(graph,
+      #   from: "union",
+      #   to: "kipling",
+      #   departure_time: ~T[08:00:00],
+      #   date: ~D[2026-05-12]
+      # )
+  """
+  @spec earliest_arrival(Graph.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def earliest_arrival(%Graph{} = graph, opts) do
+    from = Keyword.fetch!(opts, :from)
+    to = Keyword.fetch!(opts, :to)
+    departure_time = Keyword.fetch!(opts, :departure_time)
+    date = Keyword.get(opts, :date)
+    max_transfers = Keyword.get(opts, :max_transfers)
+    walk_speed_mps = Keyword.get(opts, :walk_speed_mps, 1.4)
+    max_walk_transfer_m = Keyword.get(opts, :max_walk_transfer_m)
+
+    validate_nodes!(graph, from, to)
+
+    dep_secs = GTFS.time_to_seconds(departure_time)
+
+    active_services =
+      if date && graph.calendar do
+        GTFS.active_service_ids_for_date(graph.calendar, date)
+      else
+        nil
+      end
+
+    connections = get_connections(graph, dep_secs, active_services)
+    walk_map = build_walk_map(graph, max_walk_transfer_m)
+
+    initial_state = {%{from => dep_secs}, %{from => -1}, %{}}
+
+    {s_arr, transfers_at_stop, connection_to} =
+      apply_initial_walks(walk_map, from, dep_secs, walk_speed_mps, initial_state)
+
+    transfers_of_trip = %{}
+
+    {s_arr, connection_to, _t_stop, _t_trip} =
+      Enum.reduce(
+        connections,
+        {s_arr, connection_to, transfers_at_stop, transfers_of_trip},
+        fn conn, {s, c_to, t_stop, t_trip} ->
+          scan_connection(
+            conn,
+            {s, c_to, t_stop, t_trip},
+            {max_transfers, walk_map, walk_speed_mps, from}
+          )
+        end
+      )
+
+    reconstruct_journey_result(s_arr, connection_to, from, to)
+  end
+
+  defp get_connections(graph, dep_secs, active_services) do
+    graph
+    |> Graph.edges()
+    |> Stream.flat_map(&extract_connections/1)
+    |> Stream.filter(fn conn ->
+      conn.departure_time >= dep_secs and
+        (is_nil(active_services) or MapSet.member?(active_services, conn.service_id))
+    end)
+    |> Enum.sort_by(& &1.departure_time)
+  end
+
+  defp extract_connections({u, v, conn_list}) when is_list(conn_list) do
+    Enum.map(conn_list, fn conn -> Map.merge(conn, %{from: u, to: v}) end)
+  end
+
+  defp extract_connections(_), do: []
+
+  defp build_walk_map(_graph, max_walk) when is_nil(max_walk) or max_walk <= 0, do: %{}
+
+  defp build_walk_map(graph, max_walk) do
+    stops_list = Map.keys(Graph.nodes(graph))
+
+    Enum.into(stops_list, %{}, fn stop_id ->
+      {stop_id, find_nearby_stops(graph, stop_id, stops_list, max_walk)}
+    end)
+  end
+
+  defp find_nearby_stops(graph, stop_id, stops_list, max_walk) do
+    stops_list
+    |> Stream.reject(&(&1 == stop_id))
+    |> Stream.map(fn other_id -> {other_id, stop_distance(graph, stop_id, other_id)} end)
+    |> Stream.filter(fn {_other_id, dist} -> dist <= max_walk end)
+    |> Enum.to_list()
+  end
+
+  defp apply_initial_walks(walk_map, from, dep_secs, walk_speed_mps, initial_state) do
+    case Map.get(walk_map, from) do
+      nil ->
+        initial_state
+
+      near_stops ->
+        Enum.reduce(near_stops, initial_state, fn {to_id, dist}, {s, t, c_to} ->
+          walk_time = round(dist / walk_speed_mps)
+          arr_time = dep_secs + walk_time
+
+          {
+            Map.put(s, to_id, arr_time),
+            Map.put(t, to_id, -1),
+            Map.put(c_to, to_id, %{
+              type: :walk,
+              from: from,
+              to: to_id,
+              duration: walk_time,
+              arrival_time: arr_time
+            })
+          }
+        end)
+    end
+  end
+
+  defp scan_connection(conn, {s, _c_to, _t_stop, t_trip} = state, config) do
+    can_board_from_stop = Map.get(s, conn.from, :infinity) <= conn.departure_time
+    can_board_from_trip = Map.get(t_trip, conn.trip_id, :infinity) <= conn.departure_time
+
+    if can_board_from_stop or can_board_from_trip do
+      process_boarded_connection(conn, state, can_board_from_trip, config)
+    else
+      state
+    end
+  end
+
+  defp process_boarded_connection(conn, state, can_board_from_trip, config) do
+    {s, c_to, t_stop, t_trip} = state
+    {max_transfers, walk_map, walk_speed_mps, from} = config
+
+    {trip_transfers, t_trip_new} =
+      get_trip_transfers(conn, t_trip, t_stop, can_board_from_trip, from)
+
+    if is_nil(max_transfers) or trip_transfers <= max_transfers do
+      update_arrival_and_walk(
+        conn,
+        {s, c_to, t_stop, t_trip_new},
+        trip_transfers,
+        walk_map,
+        walk_speed_mps
+      )
+    else
+      {s, c_to, t_stop, t_trip}
+    end
+  end
+
+  defp get_trip_transfers(conn, t_trip, _t_stop, true = _can_board_from_trip, _from) do
+    {Map.fetch!(t_trip, conn.trip_id), t_trip}
+  end
+
+  defp get_trip_transfers(conn, t_trip, t_stop, false = _can_board_from_trip, from) do
+    curr_stop_transfers = Map.fetch!(t_stop, conn.from)
+
+    transfers =
+      if conn.from == from do
+        0
+      else
+        curr_stop_transfers + 1
+      end
+
+    {transfers, Map.put(t_trip, conn.trip_id, transfers)}
+  end
+
+  defp update_arrival_and_walk(
+         conn,
+         {s, c_to, t_stop, t_trip_new},
+         trip_transfers,
+         walk_map,
+         walk_speed_mps
+       ) do
+    current_best = Map.get(s, conn.to, :infinity)
+
+    if conn.arrival_time < current_best do
+      s_new = Map.put(s, conn.to, conn.arrival_time)
+      t_stop_new = Map.put(t_stop, conn.to, trip_transfers)
+      c_to_new = Map.put(c_to, conn.to, conn)
+
+      propagate_walks(
+        Map.get(walk_map, conn.to),
+        conn,
+        {s_new, c_to_new, t_stop_new, t_trip_new},
+        trip_transfers,
+        walk_speed_mps
+      )
+    else
+      {s, c_to, t_stop, t_trip_new}
+    end
+  end
+
+  defp propagate_walks(nil, _conn, state, _trip_transfers, _walk_speed_mps), do: state
+
+  defp propagate_walks(
+         near_stops,
+         conn,
+         {s_acc, c_acc, t_acc, tt_acc},
+         trip_transfers,
+         walk_speed_mps
+       ) do
+    Enum.reduce(
+      near_stops,
+      {s_acc, c_acc, t_acc, tt_acc},
+      fn {near_id, dist}, {s, c, t, tt} ->
+        walk_time = round(dist / walk_speed_mps)
+        walk_arr_time = conn.arrival_time + walk_time
+
+        if walk_arr_time < Map.get(s, near_id, :infinity) do
+          {
+            Map.put(s, near_id, walk_arr_time),
+            Map.put(c, near_id, %{
+              type: :walk,
+              from: conn.to,
+              to: near_id,
+              duration: walk_time,
+              arrival_time: walk_arr_time
+            }),
+            Map.put(t, near_id, trip_transfers),
+            tt
+          }
+        else
+          {s, c, t, tt}
+        end
+      end
+    )
+  end
+
+  defp stop_distance(graph, id1, id2) do
+    case {Graph.node(graph, id1), Graph.node(graph, id2)} do
+      {%{geometry: p1}, %{geometry: p2}} ->
+        Geocalc.distance_between(
+          [elem(p1.coordinates, 1), elem(p1.coordinates, 0)],
+          [elem(p2.coordinates, 1), elem(p2.coordinates, 0)]
+        )
+
+      _ ->
+        :infinity
+    end
+  end
+
+  defp reconstruct_journey(connection_to, from, to) do
+    reconstruct_journey(connection_to, from, to, [])
+  end
+
+  defp reconstruct_journey(_connection_to, from, from, acc), do: {:ok, acc}
+
+  defp reconstruct_journey(connection_to, from, current, acc) do
+    case Map.get(connection_to, current) do
+      nil ->
+        :error
+
+      %{type: :walk} = walk ->
+        leg = %{
+          from: walk.from,
+          to: walk.to,
+          trip: "walk",
+          trip_id: "walk",
+          route_id: "walk",
+          dep: GTFS.seconds_to_time(walk.arrival_time - walk.duration),
+          arr: GTFS.seconds_to_time(walk.arrival_time),
+          departure_time: GTFS.seconds_to_time(walk.arrival_time - walk.duration),
+          arrival_time: GTFS.seconds_to_time(walk.arrival_time)
+        }
+
+        reconstruct_journey(connection_to, from, walk.from, [leg | acc])
+
+      conn ->
+        leg = %{
+          from: conn.from,
+          to: conn.to,
+          trip: conn.trip_id,
+          trip_id: conn.trip_id,
+          route_id: conn.route_id,
+          dep: GTFS.seconds_to_time(conn.departure_time),
+          arr: GTFS.seconds_to_time(conn.arrival_time),
+          departure_time: GTFS.seconds_to_time(conn.departure_time),
+          arrival_time: GTFS.seconds_to_time(conn.arrival_time)
+        }
+
+        reconstruct_journey(connection_to, from, conn.from, [leg | acc])
+    end
+  end
+
+  defp compress_legs(legs) do
+    Enum.reduce(legs, [], fn
+      leg, [] ->
+        [leg]
+
+      leg, [prev | rest] ->
+        if leg.trip_id != "walk" and leg.trip_id == prev.trip_id do
+          merged = %{
+            prev
+            | from: leg.from,
+              dep: leg.dep,
+              departure_time: leg.departure_time
+          }
+
+          [merged | rest]
+        else
+          [leg, prev | rest]
+        end
+    end)
+    |> Enum.reverse()
+  end
+
+  defp reconstruct_journey_result(s_arr, connection_to, from, to) do
+    if Map.has_key?(s_arr, to) do
+      case reconstruct_journey(connection_to, from, to) do
+        {:ok, legs} ->
+          compressed = compress_legs(legs)
+          arr_secs = Map.fetch!(s_arr, to)
+
+          {:ok,
+           %{
+             arrival_time: GTFS.seconds_to_time(arr_secs),
+             legs: compressed
+           }}
+
+        :error ->
+          {:error, :no_path}
+      end
+    else
+      {:error, :no_path}
     end
   end
 end

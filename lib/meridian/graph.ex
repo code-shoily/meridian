@@ -33,7 +33,8 @@ defmodule Meridian.Graph do
           graph: Yog.Graph.t(),
           crs: crs(),
           srid: srid(),
-          bounds: Geo.Polygon.t() | nil
+          bounds: Geo.Polygon.t() | nil,
+          calendar: list(map()) | nil
         }
 
   @enforce_keys [:graph]
@@ -41,7 +42,8 @@ defmodule Meridian.Graph do
     :graph,
     :bounds,
     crs: "EPSG:4326",
-    srid: 4326
+    srid: 4326,
+    calendar: nil
   ]
 
   # ============================================================================

@@ -1,0 +1,192 @@
+# Transit Timetable Routing with GTFS and CSA
+
+```elixir
+Mix.install([
+  {:meridian, path: "/home/mafinar/repos/elixir/meridian"},
+  {:kino, "~> 0.14"},
+  {:jason, "~> 1.4"}
+])
+```
+
+## Introduction
+
+This notebook demonstrates the **General Transit Feed Specification (GTFS)** integration in **Meridian**.
+
+Timetable-based transit routing requires a different model than standard road routing:
+1. **Nodes** represent physical transit stops (e.g., platforms, bus stations).
+2. **Edges** represent stop-to-stop segments carrying a list of scheduled transit connections (trips) rather than static distances or weights.
+3. **Routing** uses the **Connection-Scan Algorithm (CSA)**, a highly efficient algorithm designed for earliest-arrival journey planning on timetable networks.
+
+---
+
+## 1. Creating Mock GTFS Data
+
+For demonstration purposes, let's construct an in-memory mock GTFS zip file containing basic routes, stop schedules, and a calendar.
+
+```elixir
+# Mock stop locations, schedules, and active calendar service days
+stops = """
+stop_id,stop_name,stop_lat,stop_lon,zone_id
+stop_1,Union Station,43.6453,-79.3806,1
+stop_2,Spadina Station,43.6673,-79.4042,1
+stop_3,Kipling Station,43.6375,-79.5356,1
+stop_4,Close Stop,43.6455,-79.3810,1
+"""
+
+routes = """
+route_id,route_short_name,route_long_name,route_type
+route_1,1,Yonge-University,1
+route_2,501,Queen Streetcar,0
+"""
+
+calendar = """
+service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
+service_weekday,1,1,1,1,1,0,0,20260501,20260531
+service_weekend,0,0,0,0,0,1,1,20260501,20260531
+"""
+
+trips = """
+route_id,service_id,trip_id,trip_headsign
+route_1,service_weekday,trip_w_1,Downtown
+route_1,service_weekday,trip_w_2,Downtown
+route_2,service_weekday,trip_w_3,Long Branch
+route_2,service_weekend,trip_we_1,Long Branch
+"""
+
+stop_times = """
+trip_id,arrival_time,departure_time,stop_id,stop_sequence
+trip_w_1,08:00:00,08:00:00,stop_1,1
+trip_w_1,08:15:00,08:15:00,stop_2,2
+trip_w_2,08:30:00,08:30:00,stop_1,1
+trip_w_2,08:45:00,08:45:00,stop_2,2
+trip_w_3,08:20:00,08:20:00,stop_2,1
+trip_w_3,08:37:00,08:37:00,stop_3,2
+trip_we_1,09:00:00,09:00:00,stop_2,1
+trip_we_1,09:20:00,09:20:00,stop_3,2
+"""
+
+files = [
+  {~c"stops.txt", stops},
+  {~c"routes.txt", routes},
+  {~c"calendar.txt", calendar},
+  {~c"trips.txt", trips},
+  {~c"stop_times.txt", stop_times}
+]
+
+# Package the files into a zip binary
+{:ok, {~c"mem.zip", zip_binary}} = :zip.zip(~c"mem.zip", files, [:memory])
+```
+
+---
+
+## 2. Ingesting GTFS Feeds
+
+We can load the GTFS zip directly into a `Meridian.Graph`:
+
+```elixir
+alias Meridian.Builder.GTFS
+alias Meridian.Pathfinding
+
+# Load the GTFS data (supports paths, URLs, or raw zip binary)
+{:ok, graph} = GTFS.from_zip(zip_binary)
+
+# Inspect the loaded transit network
+inspect(graph)
+```
+
+We can also restrict our network to specific route types (e.g., subway / light rail only) or restrict to a specific date during ingestion:
+
+```elixir
+# Ingest only route_type: 1 (subway) for a specific date
+{:ok, subway_graph} = GTFS.from_zip(zip_binary, route_types: [1], service_date: ~D[2026-05-12])
+inspect(subway_graph)
+```
+
+---
+
+## 3. Querying Stop Schedules
+
+We can query upcoming departures from a stop:
+
+```elixir
+# Get departures from Union Station after 08:10 AM
+GTFS.departures_from(graph, "stop_1", after: ~T[08:10:00])
+```
+
+We can also find active calendar services for a given date:
+
+```elixir
+# Check which service rules are active on May 12, 2026 (a Tuesday)
+GTFS.service_ids_for(graph, ~D[2026-05-12])
+```
+
+---
+
+## 4. Timetable-based Journey Planning (CSA)
+
+Using `Meridian.Pathfinding.earliest_arrival/2`, we can run connection-scan routing.
+
+### A basic journey (No Transfers)
+
+Find the earliest arrival from Union Station (`stop_1`) to Spadina Station (`stop_2`) departing at 07:55 AM:
+
+```elixir
+{:ok, journey} =
+  Pathfinding.earliest_arrival(graph,
+    from: "stop_1",
+    to: "stop_2",
+    departure_time: ~T[07:55:00]
+  )
+
+journey
+```
+
+### Routing with Transfers
+
+If we want to go from Union Station (`stop_1`) all the way to Kipling Station (`stop_3`), we need to take a subway to Spadina, transfer to the Bloor subway (Queen streetcar line in mock data), and continue:
+
+```elixir
+{:ok, journey_with_transfers} =
+  Pathfinding.earliest_arrival(graph,
+    from: "stop_1",
+    to: "stop_3",
+    departure_time: ~T[07:55:00]
+  )
+
+journey_with_transfers
+```
+
+### Limiting Transfers and Calendar Day Filtering
+
+We can limit the maximum allowed transfers, or filter active service schedules based on the query date (e.g., weekend service schedules):
+
+```elixir
+# May 10, 2026 is a Sunday (weekend calendar rules apply)
+{:ok, weekend_journey} =
+  Pathfinding.earliest_arrival(graph,
+    from: "stop_1",
+    to: "stop_3",
+    departure_time: ~T[07:55:00],
+    date: ~D[2026-05-10]
+  )
+
+weekend_journey
+```
+
+### Supporting Walk Transfers between nearby stops
+
+We can also specify walk-transfer limits (in meters) and walk speed to allow transferring between physically close stops without a transit trip:
+
+```elixir
+# Allows walking transfers between stop_1 and stop_4 (within 100 meters)
+{:ok, walk_transfer_journey} =
+  Pathfinding.earliest_arrival(graph,
+    from: "stop_1",
+    to: "stop_4",
+    departure_time: ~T[08:00:00],
+    max_walk_transfer_m: 100,
+    walk_speed_mps: 1.4
+  )
+
+walk_transfer_journey
+```

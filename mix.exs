@@ -55,6 +55,9 @@ defmodule Meridian.MixProject do
       {:geo, "~> 3.6"},
       {:geocalc, "~> 0.8"},
 
+      # CSV parsing for GTFS
+      {:nimble_csv, "~> 1.2"},
+
       # Optional: H3 hexagonal grids (requires C NIF)
       {:h3, "~> 3.0", optional: true},
 
@@ -101,7 +104,9 @@ defmodule Meridian.MixProject do
         {"livebooks/guides/getting_started.livemd",
          [filename: "getting_started", title: "Getting Started"]},
         {"livebooks/guides/osm_demo.livemd",
-         [filename: "osm_demo", title: "OpenStreetMap & Pathfinding"]}
+         [filename: "osm_demo", title: "OpenStreetMap & Pathfinding"]},
+        {"livebooks/guides/gtfs_demo.livemd",
+         [filename: "gtfs_demo", title: "Transit Timetable Routing (GTFS)"]}
       ],
       source_ref: "v#{@version}",
       source_url: @source_url,
