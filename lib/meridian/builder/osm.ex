@@ -136,14 +136,15 @@ defmodule Meridian.Builder.OSM do
         |> Enum.reduce(%{nodes: %{}, ways: []}, fn entities, acc ->
           Enum.reduce(entities, acc, fn
             %PBFParser.Data.Node{} = node, acc_inner ->
-              node_map = %{
-                id: node.id,
-                lat: node.latitude,
-                lon: node.longitude,
-                tags: node.tags || %{}
+              %{
+                acc_inner
+                | nodes:
+                    Map.put(
+                      acc_inner.nodes,
+                      node.id,
+                      {node.latitude, node.longitude, node.tags || %{}}
+                    )
               }
-
-              %{acc_inner | nodes: Map.put(acc_inner.nodes, node.id, node_map)}
 
             %PBFParser.Data.Way{} = way, acc_inner ->
               highway = Map.get(way.tags || %{}, "highway")
@@ -219,7 +220,7 @@ defmodule Meridian.Builder.OSM do
       lat = elem["lat"]
       lon = elem["lon"]
       tags = elem["tags"] || %{}
-      {id, %{id: id, lat: lat, lon: lon, tags: tags}}
+      {id, {lat, lon, tags}}
     end)
     |> Map.new()
   end
@@ -317,7 +318,7 @@ defmodule Meridian.Builder.OSM do
       end)
 
     Enum.reduce(active_node_ids, graph, fn node_id, acc ->
-      %{lat: lat, lon: lon, tags: tags} = Map.fetch!(nodes_map, node_id)
+      {lat, lon, tags} = Map.fetch!(nodes_map, node_id)
 
       node_data = %{
         geometry: %Geo.Point{coordinates: {lon, lat}},
@@ -392,7 +393,7 @@ defmodule Meridian.Builder.OSM do
     |> Enum.chunk_every(2, 1, :discard)
     |> Enum.reduce(0.0, fn [id1, id2], acc ->
       case {Map.get(nodes_map, id1), Map.get(nodes_map, id2)} do
-        {%{lat: lat1, lon: lon1}, %{lat: lat2, lon: lon2}} ->
+        {{lat1, lon1, _tags1}, {lat2, lon2, _tags2}} ->
           acc + Geocalc.distance_between([lat1, lon1], [lat2, lon2])
 
         _ ->

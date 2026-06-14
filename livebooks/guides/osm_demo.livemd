@@ -7,7 +7,9 @@ Mix.install([
   {:kino_maplibre, "~> 0.1"},
   {:jason, "~> 1.4"},
   {:req, "~> 0.5"},
-  {:pbf_parser, "~> 0.1.2"}
+  {:pbf_parser, "~> 0.1.2"},
+  {:zog, path: "/home/mafinar/repos/elixir/zog", override: true},
+  {:zigler, "~> 0.16.0", override: true}
 ])
 ```
 
@@ -82,6 +84,46 @@ If you have a local `.osm.pbf` file (e.g., downloaded from BBBike or Geofabrik),
 ```
 
 ---
+
+```elixir
+    node_ids = Map.keys(Meridian.Graph.nodes(graph))
+    start_node = Enum.at(node_ids, 0)
+    goal_node = Enum.at(node_ids, min(50000, length(node_ids) - 1))
+```
+
+```elixir
+    {time_us, {:ok, path}} = :timer.tc(fn ->
+      Meridian.Pathfinding.a_star(graph, from: start_node, to: goal_node)          
+    end)
+  
+    IO.puts("Shortest route of #{length(path.nodes)} segments found in #{time_us / 
+  1000} ms!")
+
+```
+
+```elixir
+    # 1. Compute weights and convert to Zog ONCE
+    graph_with_weights = Meridian.CRS.compute_edge_weights(graph)
+    zog_graph = Zog.from_graph(graph_with_weights.graph)
+  
+    # 2. Extract coordinate maps ONCE
+    {x_coords, y_coords} =
+      Enum.reduce(graph.graph.nodes, {%{}, %{}}, fn {id, data}, {xs, ys} ->        
+        case data do
+          %{geometry: %Geo.Point{coordinates: {lon, lat}}} ->
+            {Map.put(xs, id, lon), Map.put(ys, id, lat)}
+          _ -> {xs, ys}
+        end
+      end)
+  
+    # 3. Time ONLY the search (calling the Zog NIF directly!)
+    {search_time_us, {:ok, {route, weight}}} = :timer.tc(fn ->
+      Zog.Pathfinding.astar(zog_graph, start_node, goal_node, x_coords, y_coords,  
+  :euclidean)
+    end)
+  
+    IO.puts("Pure native search completed in #{search_time_us / 1000} ms!")    
+```
 
 ## 4. Zog-Accelerated Pathfinding
 
