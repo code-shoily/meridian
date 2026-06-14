@@ -143,7 +143,7 @@ defmodule Meridian.Builder.OSM do
                 tags: node.tags || %{}
               }
 
-              put_in(acc_inner.nodes[node.id], node_map)
+              %{acc_inner | nodes: Map.put(acc_inner.nodes, node.id, node_map)}
 
             %PBFParser.Data.Way{} = way, acc_inner ->
               highway = Map.get(way.tags || %{}, "highway")
